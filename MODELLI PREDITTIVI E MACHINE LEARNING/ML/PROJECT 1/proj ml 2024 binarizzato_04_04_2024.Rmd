@@ -1,0 +1,3209 @@
+---
+title: "proj ml 2024 binarizzato"
+author: "Andrea Millone"
+date: "2024-04-02"
+output: word_document
+---
+
+
+#importo dt  con numeriche e character variables 
+importiamo il dt 
+
+```{r warning=FALSE}
+library(readr)
+X2222 <- read_delim("2222.csv", delim = ";", 
+    escape_double = FALSE, col_types = cols(Age = col_number(), 
+        Height = col_number(), Weight = col_number(), 
+        FCVC = col_number(), NCP = col_number(), 
+        CH2O = col_number(), FAF = col_number(), 
+        TUE = col_number()), trim_ws = TRUE)
+#View(X2222)
+```
+
+dt è composto da 2111 osservazioni e 17 variabili 
+
+#cambiamneto classi variabili
+
+assegniamo le corrette classi delle variabili 
+
+```{r}
+colnames(X2222)
+X2222$Gender <- as.factor(X2222$Gender)
+X2222$family_history_with_overweight <- as.factor(X2222$family_history_with_overweight)
+
+
+X2222$FAVC <- as.factor(X2222$FAVC)
+X2222$CAEC <- as.factor(X2222$CAEC)
+
+X2222$SMOKE <- as.factor(X2222$SMOKE)
+
+X2222$SCC <- as.factor(X2222$SCC)
+
+X2222$CALC <- as.factor(X2222$CALC)
+
+X2222$NObeyesdad <- as.factor(X2222$NObeyesdad)
+
+X2222$MTRANS <- as.factor(X2222$MTRANS)
+#numeriche 
+# Obesità$Age <- as.numeric(Obesità$Age)
+# 
+# Obesità$Height <- as.numeric(Obesità$Height)
+# 
+# Obesità$Weight <- as.numeric(Obesità$Weight)
+# 
+# Obesità$NCP <- as.numeric(Obesità$NCP)
+# 
+# Obesità$CH2O <- as.numeric(Obesità$CH2O)
+# 
+# Obesità$FAF <- as.numeric(Obesità$FAF)
+# 
+# Obesità$FCVC <- as.numeric(Obesità$FCVC)
+# Obesità$TUE <- as.numeric(Obesità$TUE)
+
+#mi introduce na quando non dovrebbe farlo 
+
+
+```
+
+#descrittive e tipologia variabiile 
+coi comandi *summary* e *skim_without_chart*  studiamo le statistiche descrittive delle continue e le frequenze delle variabili categoriali .
+la libreria *pander* permette di visualizzare meglio nell'output la summary e skimr .
+il comando *status* della libreria *funModeling* mi mostra la tipologia delle variabili ,in modo cosi da controllare se le variabili sono state caricate con la giusta classe . 
+
+```{r}
+require(pander)
+pander(summary(X2222))
+require(skimr)
+skimr::skim_without_charts(X2222)
+str(X2222)
+library(funModeling)
+status(X2222)
+```
+
+
+
+
+
+# RICODIFICA 7  LIVELLI VARIABILE TARGET in una nuova variabile  target a 2 livelli 
+i 7 livelli della variabile NObeyesdad vengono ricodificati in 2 livelli ,così creando la variabile lv_bmi con due classi: X0 i non obesi ;X1 gli obesi  
+
+```{r}
+colnames(X2222)
+# target NObeyesdad
+
+levels(X2222$NObeyesdad)
+prop.table(table(X2222$NObeyesdad))
+
+X2222$lv_bmi[X2222$NObeyesdad == "Insufficient_Weight" | X2222$NObeyesdad == "Normal_Weight"  | X2222$NObeyesdad == "Overweight_Level_I"  | X2222$NObeyesdad == "Overweight_Level_II" ] = 0#sottopeso x<=18.49
+
+
+X2222$lv_bmi[X2222$NObeyesdad == "Obesity_Type_I"  |X2222$NObeyesdad == "Obesity_Type_II"  | X2222$NObeyesdad == "Obesity_Type_III" ] = 1#obesità 29.9<x
+X2222$lv_bmi <- as.factor(X2222$lv_bmi)
+
+# X2222
+
+
+prop.table(table(X2222$lv_bmi))# 1:12%  2:14%  3:26%  4:46%
+# 
+#  1         2 
+# 0.5395547 0.4604453 
+# levels(X2222$lv_bmi) <- make.names(levels(X2222$lv_bmi))
+
+
+```
+
+si ha la maggioranza della popolazione non obeso per il 54% contro il 46% degli obesi  
+
+
+#proprozioni delle due classi della target 
+
+
+```{r}
+
+
+levels(X2222$lv_bmi) <- make.names(levels(X2222$lv_bmi))
+
+prop.table(table(X2222$lv_bmi))
+#       X0        X1 
+#   0.5395547 0.4604453
+```
+
+si ha la maggioranza della popolazione non obeso per il 54% contro il 46% degli obesi  
+
+
+
+#STAT DESCRITTIVE 
+
+
+#passagi di preprocessing 
+
+controlliamo se le nostre variabili soffrono dei seguenti problemi :
+- collinearità
+- near0var 
+- se ci sono combinazioni lineari tra di loro 
+
+```{r}
+library(Hmisc)
+#library(funModeling)
+library(dplyr)
+library(PerformanceAnalytics)
+library(caret)
+
+pander( summary(X2222))
+skimr::skim_without_charts(X2222)
+nvz<-nearZeroVar(X2222,saveMetrics = T);nvz
+#near0var sono smoke e scc
+
+
+
+#rimuovo le lineari dipendnze 
+# comboinfo<-findLinearCombos(X2222)
+
+```
+
+le variabili che hanno  near0var sono smoke e scc
+
+
+
+#xxxx########################################################################################################################
+#divisione continue e categoriali 
+
+dividiamo le categoriali e le continue  per svolgere determinate operazioni
+
+dal dt originale creiamo due dt  numeric e factordata
+
+```{r}
+#library(funModeling)
+library(dplyr)
+#require(funModeling)
+
+#down_train$Class
+
+# divide data as factor and numeric
+isfactor <- sapply(X2222, function(x) is.factor(x))
+# isfactor
+
+# select factor var in a dataframe
+factordata <- X2222[, isfactor]
+str(factordata)
+
+numeric <- sapply(X2222, function(x) is.numeric(x))
+numeric <-X2222[, numeric]
+str(numeric)
+#solo numeriche
+ data_cor<-cor(numeric) ; data_cor
+ data_high_cor<-findCorrelation(data_cor,cutoff=.75);data_high_cor#0 variabili coorelate 
+
+
+Class_i<-factordata$lv_bmi
+ numeric_CBIND <-cbind(numeric, Class_i)
+ 
+ require(pander)
+
+pander(summary(numeric))
+pander(summary(factordata))
+
+```
+
+
+
+
+#rappresentazione grafica categoriali  
+
+rapprestiamo graficamente con degli istogrammi, le percentuali dei livelli delle categoriali
+
+```{r}
+# Dati di esempio
+# dati <- c("A", "A", "B", "B", "B", "C", "D", "D", "D", "D")
+
+# Conteggio delle frequenze
+
+
+# Grafico a barre
+barplot(prop.table(table(X2222$Gender)),ylim = c(0,1),ylab="frequenze percentuali", col = c("darksalmon", "dodgerblue"), main= " Sex")
+
+prop.table(table(X2222$Gender))
+#    Female      Male 
+# 0.4940786 0.5059214
+
+# Grafico a barre
+barplot(prop.table(table(X2222$family_history_with_overweight)),ylim = c(0,1),ylab="frequenze percentuali", col = c("aquamarine4", "aquamarine1"), main= " family_history_with_overweight")
+
+prop.table(table(X2222$family_history_with_overweight))
+#       no      yes 
+# 0.182378 0.817622 
+
+# Grafico a barre
+barplot(prop.table(table(X2222$FAVC)),ylim = c(0,1),ylab="frequenze percentuali", col = c("brown", "burlywood"), main= " FAVC")
+
+prop.table(table(X2222$FAVC))
+#        no       yes 
+# 0.1160587 0.8839413 
+#  
+# Grafico a barre
+barplot(prop.table(table(X2222$CAEC)),ylim = c(0,1),ylab="frequenze percentuali", col = c("brown", "burlywood","darkgreen","darkkhaki"), main= " CAEC")
+
+prop.table(table(X2222$CAEC))
+
+#     Always Frequently         no  Sometimes 
+# 0.02510658 0.11463761 0.02415917 0.83609664 
+ 
+ # Grafico a barre
+barplot(prop.table(table(X2222$SMOKE)),ylim = c(0,1),ylab="frequenze percentuali", col = c("darkorchid", "darkolivegreen3"), main= " SMOKE")
+
+prop.table(table(X2222$SMOKE))
+#        no       yes 
+# 0.9791568 0.0208432
+ 
+ 
+ # Grafico a barre
+barplot(prop.table(table(X2222$SCC)),ylim = c(0,1),ylab="frequenze percentuali", col = c("goldenrod2", "gray"), main= " SCC")
+
+prop.table(table(X2222$SCC))
+#         no        yes 
+# 0.95452392 0.04547608 
+ 
+ 
+ # Grafico a barre
+barplot(prop.table(table(X2222$CALC)),ylim = c(0,1),ylab="frequenze percentuali", col = c("darkslategray4", "darkslateblue","darkslategray","darkseagreen2"), main= " CALC")
+
+
+prop.table(table(X2222$CALC))
+#       Always   Frequently           no    Sometimes 
+# 0.0004737091 0.0331596400 0.3027001421 0.6636665088 
+ 
+ # Grafico a barre
+barplot(prop.table(table(X2222$MTRANS)),ylim = c(0,1),ylab="frequenze percentuali", col = c("lemonchiffon3", "lightblue1","green","honeydew3","lightcoral"), main= " MTRANS")
+
+prop.table(table(X2222$MTRANS))
+
+          # Automobile                  Bike             Motorbike Public_Transportation 
+          # 0.216485078           0.003315964           0.005210801           0.748460445 
+          #     Walking 
+          # 0.026527712 
+ 
+ # Grafico a barre
+barplot(prop.table(table(X2222$NObeyesdad)),ylim = c(0,1),axisname=F,ylab="frequenze percentuali", col = c("sienna", "orangered3","lightgreen","khaki","lightpink4","mediumorchid3","lightseagreen"), main= " NObeyesdad",legend.text=c("Insufficient_Weight", "Normal_Weight","Obesity_Type_I","Obesity_Type_II","Obesity_Type_III","Overweight_Level_I","Overweight_Level_II"))
+prop.table(table(X2222$NObeyesdad))
+
+# Insufficient_Weight       Normal_Weight      Obesity_Type_I     Obesity_Type_II 
+#           0.1288489           0.1359545           0.1662719           0.1406916 
+#    Obesity_Type_III  Overweight_Level_I Overweight_Level_II 
+#           0.1534818           0.1373757           0.1373757
+# 
+#    Normal_Weight :287      X1: 972 
+# 
+#    Obesity_Type_I :351       NA    
+# 
+#   Obesity_Type_II :297       NA    
+# 
+#   Obesity_Type_III :324      NA    
+# 
+#  Overweight_Level_I :290     NA    
+# 
+#  Overweight_Level_II:290     NA
+
+# Grafico a barre
+barplot(prop.table(table(X2222$lv_bmi)),axisname=F,ylim = c(0,1),ylab="frequenze percentuali", col = c("cyan", "red"), main= " lv_bmi",legend.text=c("X0:non obesi", "X1:obesi"))
+
+prop.table(table(X2222$lv_bmi))
+#       X0        X1 
+# 0.5395547 0.4604453 
+
+```
+
+
+
+
+#ricerca valori mancanti di tutte le variabili  
+
+con il comando grafico *aggr* e il comando *sapply* vediamo se ci sono dati mancanti 
+
+```{r}
+
+library(VIM)
+missingness<- aggr(X2222, col=c('navyblue','yellow'),
+                   numbers=TRUE, sortVars=TRUE,labels=names(X2222), cex.axis=.6,gap=2)
+
+sapply(X2222, function(x)(sum(is.na(x)))) # NA counts
+
+```
+
+
+per nessuna variabile sembra esserci dei valori di NA 
+
+
+#variabile TARGET originale   COME SI DISTRIBUISCE IN BASE ALLE variabili CONTINUE 
+
+con libreria *ggplot2* vediamo come i livelli della target originale (NObeyesdad) si distribuiscono secondo le variabili continue  
+
+```{r}
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$Weight,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$Age,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$Height,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$FCVC,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$NCP,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$CH2O,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+
+
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$FAF,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+
+library(ggplot2)
+ggplot(X2222,aes(x=X2222$TUE,fill=NObeyesdad))+
+         geom_histogram(position="identity",alpha=0.5,bins=50)
+```
+
+#DISTRIBUZIONI UNIVARIATE  DELLE variabili  CONTINUE 
+
+disegniamo le distribuzioni univariate delle variabili  continue   
+
+```{r}
+
+
+hist(X2222$Age,las=1,breaks=100,xlim=c(0,100),col="red")
+
+
+hist(X2222$Height,las=1,breaks=1000,xlim=c(0,7),col="green")
+
+
+
+hist(X2222$Weight,las=1,breaks=100,xlim=c(0,200),col="yellow")
+
+
+hist(X2222$FCVC,las=1,breaks=100,xlim=c(0,100),col="brown")
+
+
+
+hist(X2222$NCP,las=1,breaks=100,xlim=c(0,100),col="blue")
+
+
+
+
+hist(X2222$CH2O,las=1,breaks=100,xlim=c(0,100),col="orange")
+
+
+
+hist(X2222$FAF,las=1,breaks=100,xlim=c(0,100),col="purple")
+
+
+
+hist(X2222$TUE,las=1,breaks=100,xlim=c(0,100),col="magenta")
+
+
+
+```
+
+
+
+#grafico delle classi 
+
+#variabile TARGET originale   COME SI DISTRIBUISCE IN BASE ALLE variabili CONTINUE 
+
+con comando *featurplot* permette di studiare come la variabile TARGET originale    SI DISTRIBUISCE IN BASE ALLE variabili CONTINUE
+
+```{r}
+#DENSITA GRAFICI 
+library(caret)
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+featurePlot(x=numeric_CBIND[,-9], y=numeric_CBIND$Class_i, plot="density", scales=scales)
+```
+
+
+
+
+# matrice di correlazione 
+calcoliamo le coorelazioni tra le variabili  continue e osserviamo i legami
+per farlo usiamo il comando *cor* per calcolare i valori ,e con i comandi delle librerie *corrgram*,  *corrplot* *PerformanceAnalytics* creiamo i grafici della amtrice di correlazione .
+
+```{r}
+# numeric2<-numeric[,-c(2,3)]
+require(corrgram)
+corrgram(numeric, lower.panel = panel.cor, cex=1, cex.labels = 1)
+# install.packages("corrplot")
+graf<-cor(numeric)
+library(corrplot)
+corrplot.mixed(graf, order = 'AOE')
+
+require(pander)
+pander(cor(numeric))
+
+
+
+
+library(PerformanceAnalytics)
+chart.Correlation(numeric , histogram=TRUE, pch=18,cex=0.01)
+```
+
+
+per nessuna combianzione di variabili ci sono legami superiori al 10%.
+
+#dividiamo dt in train validation e test 
+
+procediamo dopo la fase di data-quality e preprocessing a dividere i dt in training(60% dt originale) e test(restante 40% dt originale),con la condizione di mantenere le proprozioni della classe della target lv_bmi  equivalenti a quelle iniziali , per no avere risultati distorti .
+usiamo comando *createDataPartition* . 
+
+```{r}
+#library(funModeling)
+library(dplyr)
+nuovo <- cbind(numeric, factordata)
+library(caret)
+
+
+split <- createDataPartition(y=nuovo$lv_bmi, p = 0.60, list = FALSE)
+train <- nuovo[split,]#dt che ha tutte le covariate 
+test <- nuovo[-split,]
+#togliamo varibile target iniziale 
+
+##proviamo togliere bmi ,heigt e vecchia target
+
+train_chgoff<-train[,-c(2,3,17)]
+test_chgoff<-test[,-c(2,3,17)]
+
+# 
+# train_chgoff$Class<-as.factor(train_chgoff$Class)
+# 
+# test_chgoff$Class<-as.factor(test_chgoff$Class)
+
+#proporzioni classi target nei dt train e test 
+table(train$lv_bmi)/nrow(train)
+table(test$lv_bmi)/nrow(test)
+```
+
+
+
+
+
+
+#importanza variabili --->albero tradizionale 
+
+per addestrare i modelli e ottenere i migliori risultati possibili ,adottiamo il metodo di selezione delle covariate  tramite l'algoritmo dell'albero .
+ un metodo non parametrico, cioè un metodo non analitico che permette di individuare le variabili più importanti ed eliminare eventualmente il problema della collinearità e 0 variance.
+Una Variabile è  importante, quando la sua importanza è data dalla somma dei ΔGini relativi a lei, cioè la somma dei decrementi “impurità” che la variabile genera nei vari piani dell’albero.
+
+
+```{r}
+set.seed(1234)
+cvCtrl <- trainControl(method = "cv", number=10, search="grid", classProbs = TRUE,summaryFunction =twoClassSummary)
+
+# # Esempio di rinomina dei livelli della variabile di classe
+# levels(train_chgoff$Class) <- make.names(levels(train_chgoff$Class))
+
+modelLookup("rpart")
+
+
+param_grid <- expand.grid(.cp = seq(0.01, 0.5, 0.01))
+
+rpartTuneCvA <- train(lv_bmi ~ ., data = train_chgoff, method = "rpart",
+                      tuneLength =5,
+                      trControl = cvCtrl,na.action = na.pass,tuneGrid=param_grid)#na.action=na.pass
+rpartTuneCvA
+# best accuracy using best cp
+
+# var impp of the tree
+varImp(object=rpartTuneCvA)#GUARDIAMO VARBILI IMPORTANTI ,FORTE TRA CONTRAPPOSIZIONE 
+#TRA VARIBILI IMPORTANTI E VARIBILI NULLE ,QUINIDI PORTIAM AVANT LE VARIBILI CHE HANNO VALORE MAGGIORE DI 0
+plot(varImp(object=rpartTuneCvA),main="train tuned - Variable Importance")
+#LE VARIBILI DA ELIMNARE POTREBBERO ESSERE SURROGATE(NON SOLO ELIMNATE TOGLIENOLE ),
+#CIOE AVREBBERO DATO STESSA IMPURITA ,ALBERO ELIMINA VARIBILI SURROGATE GI ADI DEFAULT 
+
+
+
+#confusionMatrix(rpartTuneCvA)#Accuracy (average) : 0.9829
+# 
+# P_Pred_albero <- predict(rpartTuneCvA, train_chgoff,type="raw")#CALCOLIAMO LE PREVISTE SU TRAINNING ,SALVA COME POST IRIOR ,CI DA PROBABILITA POSTERIRORI DI ESSERE SIA DI CLASSE 1 O 0 PER ENTRAMBE LE CLASSI DEL TARGET 
+# confusionMatrix(P_Pred_albero,train_chgoff)
+# 
+# 
+# P_Pred_albero_t <- predict(rpartTuneCvA, test_chgoff,type="raw")
+# 
+# confusionMatrix(P_Pred_albero_t,test_chgoff,type="raw")
+
+```
+
+eleminiamo le  variabili quali il peso, l’altezza  poiché troppo correlate con la variabile target
+
+
+
+
+
+
+
+```{r}
+
+# summary performance (best cp)
+getTrainPerf(rpartTuneCvA)
+
+#ESWTRIAMO VARIBILI IMPOTANTI IN UN DT 
+vi=as.data.frame(rpartTuneCvA$finalModel$variable.importance);vi
+head(vi)
+
+pastelist=cat(paste(shQuote(rownames(vi), type="cmd"), collapse=", "));pastelist
+viname=row.names(vi)
+
+
+
+NameList <- c( "family_history_with_overweightyes", "CAECSometimes", "NCP", "CAECFrequently", "FCVC", "FAVCyes", "CH2O", "TUE", "CAECno", "SCCyes", "CALCno", "CALCSometimes", "FAF", "Age", "GenderMale", "MTRANSMotorbike", "MTRANSBike", "MTRANSWalking","lv_bmi")
+
+#rivedere SE AGGIUNGERE A ANO LE VARIABILI CHE NO HA CONSIDERATO 
+
+#tyrain2 con ,age,family_history,caec,tue,ch20,facv,fcv
+# training2<-train_chgoff[,c(1,2,4,6,8,9,10,15)]
+
+
+
+
+training2 <- train_chgoff[,colnames(train_chgoff) %in% NameList] #dt train con variabili importanti
+testing2 <- test_chgoff[,colnames(train_chgoff) %in% NameList] 
+
+#testing2 <- train[,colnames(train) %in% NameList] 
+#train2=train[,viname]
+#???train2=cbind(train$MIS_Status, train2)#dt train con variabili importanti 
+#train2 mi crea una variabile in piu ,quindi uso training2
+#names(train2)[1] <- "MIS_Status"
+#head(train2)
+prop.table(table(training2$lv_bmi))
+prop.table(table(testing2$lv_bmi))
+
+
+```
+
+abbiamo creato i due dt : training2 e test2 ,i quali hanno al loro interno le varibaili migliori per i modelli 
+
+##xxx#####################################################################################################################
+
+
+
+
+
+con dt di train formato dalle  covariate importanti implemento i diversi modelli di addestramento :
+- LOGISTICO
+-PLS
+-RABDOM FOREST
+-GRADIENT BOOSTING 
+-KNN
+-NAIVE BAYES 
+-LDA
+-QDA 
+-RIDGE
+-LASSO 
+-SVM
+-RETI NEURALI 
+-XGBOOST
+
+
+
+##x######################################################################################################
+
+#mod logistico 
+ per svolgere i diversi modelli usiamo le funzioni contenute nella libreria *caret* .
+ con il comando trainControl si possono impostare tutti i settaggi riguardanti la cross validation.
+ con il comando *train* creiamo modello con adeguato preprocessing e settaggi dei parametri di tuning(non per tutti i modelli sono richeesti queste impostazioni),al fine di ottenere i nmigliori risultati .
+ con il comando *predict* andiamo a creare le probbilità attese della target in base al  modello che abbimao addestrato ,infine con comando *ConfusionMatrix* visualizziamo la matrice di confuzione con allegato le metriche (Accuracy,Sensitivity,Specificity,ecc) 
+ 
+ 
+Il modello logistico è un tipo di modello di regressione utilizzato  nel  machine learning per la classificazione binaria, adatto quando la variabile dipendente (o target) è di tipo binario.
+
+Come funziona:
+Il modello logistico utilizza una funzione logistica (o sigmoide) per trasformare la combinazione lineare dei predittori (variabili indipendenti) in un valore compreso tra 0 e 1. Questo valore rappresenta la probabilità che una determinata osservazione appartenga alla classe positiva della variabile dipendente
+ Alcuni esempi di applicazioni includono la predizione del rischio di malattie, il rilevamento di frodi finanziarie, la segmentazione di clienti e altro ancora. 
+ 
+ 
+ Si usa perché:
+-È interpretabile: I coefficienti stimati forniscono informazioni sul contributo di ciascun predittore alla variabile dipendente.
+-È robusto: È relativamente robusto rispetto ad alcune violazioni delle assunzioni, come la normalità dei residui.
+-È efficiente: È computazionalmente efficiente, soprattutto con grandi set di dati.
+
+
+
+I passaggi di preprocessing per il modello logistico includono:
+
+- Trasformazione delle variabili: Può essere necessario applicare trasformazioni alle variabili per soddisfare le assunzioni del modello, ad esempio standardizzare le variabili continue.
+- Gestione dei dati mancanti: Trattare i valori mancanti nelle variabili indipendenti.
+
+- Selezione delle feature: Identificare e selezionare le feature rilevanti per il modello.
+
+- Codifica delle variabili categoriche: Trasformare le variabili categoriche in variabili dummy(SI INTENDE TRASFORMAZRE I LIVELLI FATTORIALI IN LIVELLI IN FORMATO NUMERICO ,ES: LV1:CIAO LV2:ADDIO --> LV1_R:1  LV2_R: 2) o utilizzare tecniche di codifica appropriata.
+
+Ecco perché la dummyzzazione delle variabili categoriche è spesso preferibile:
+
+Compatibilità con gli algoritmi: Molti algoritmi di machine learning richiedono che le variabili di input siano numeriche. Poiché le variabili categoriche non sono direttamente numeriche, devono essere trasformate in una forma numerica. La codifica delle variabili categoriche in dummy fornisce una rappresentazione numerica che può essere utilizzata direttamente dagli algoritmi.
+
+Preservazione dell'informazione: La dummyzzazione delle variabili categoriche conserva l'informazione contenuta nelle categorie originali, consentendo agli algoritmi di apprendimento automatico di catturare e utilizzare correttamente queste informazioni durante il processo di addestramento.
+
+Evitare l'effetto di ordinalità: Quando si trattano variabili categoriche ordinate, la dummyzzazione evita che l'algoritmo assuma erroneamente un'ordinalità che potrebbe non essere presente nei dati. 
+
+
+
+
+
+I  MODELLI A CUI SERVE LA DUMMYZZAZIONE VARIABILI :
+
+- Regressione logistica: Quando si utilizzano variabili categoriche come predittori nella regressione logistica, è necessario trasformarle in variabili dummy per poterle includere nel modello.
+
+- Analisi discriminante lineare (LDA): Anche LDA può richiedere la dummyzzazione delle variabili categoriche, specialmente se si utilizzano metodi che richiedono l'assunzione di normalità delle features.
+
+- Analisi discriminante quadratico (QDA): Come LDA, anche QDA può richiedere la dummyzzazione delle variabili categoriche.
+
+- Alberi decisionali: Anche se gli alberi decisionali possono gestire direttamente le variabili categoriche senza dummyzzazione, la loro performance può essere migliorata mediante l'utilizzo di una codifica adatta, come la dummyzzazione.
+
+- Random Forest: Random Forest, un insieme di alberi decisionali, richiede una codifica delle variabili categoriche in modo che ciascuna feature possa essere considerata in ciascun albero.
+
+- Gradient Boosting Machines (GBM): Anche GBM, come Random Forest, richiede la dummyzzazione delle variabili categoriche per lavorare con esse.
+
+- Support Vector Machines (SVM): In molti casi, le SVM richiedono che le variabili categoriche siano convertite in variabili dummy prima dell'addestramento.
+
+Mentre alcuni algoritmi, come gli alberi decisionali, possono gestire direttamente le variabili categoriche, altri, come le reti neurali, possono richiedere tecniche di encoding specifiche per le variabili categoriche, come l'encoding one-hot o la codifica ordinale. È importante comprendere le esigenze specifiche di ciascun algoritmo e applicare il preprocessing appropriato per adattarsi ai dati di input.
+
+
+
+
+
+
+
+Il concetto di "trade-off" nel machine learning si riferisce alla situazione in cui si deve fare una scelta tra due o più opzioni, dove il miglioramento di una componente comporta un peggioramento di un'altra. In altre parole, ciò implica che non si può ottimizzare simultaneamente tutte le metriche o gli obiettivi di interesse, ma è necessario trovare un compromesso tra di essi.
+
+Ecco alcuni esempi comuni di trade-off nel contesto del machine learning:
+
+1. **Bias-Variance trade-off**:
+   - **Bias**: Rappresenta l'errore introdotto dalla semplificazione delle ipotesi fatte dal modello rispetto alla realtà dei dati. Un modello con alto bias potrebbe non catturare abbastanza dettagli complessi nei dati.
+   - **Variance**: Rappresenta la sensibilità del modello alle variazioni nei dati di addestramento. Un modello ad alta varianza può essere troppo complesso e adattarsi troppo ai dati di addestramento, perdendo la capacità di generalizzare bene ai dati non visti.
+   - Trade-off: Riducendo il bias del modello (ad esempio, utilizzando modelli più complessi ), si può aumentare la varianza e viceversa. L'obiettivo è trovare un equilibrio ottimale tra bias e varianza per ottenere il miglior modello possibile.
+
+
+   - Trade-off: Riducendo il bias del modello (ad esempio, utilizzando modelli più complessi che permettano di catturare abbastanza i dettagli della realtà ,aumentando la precisione ,però modelli sempre più vomplessi comportano a una meno interpretabilità del modello ), si può aumentare la varianza(Rappresenta la sensibilità del modello alle variazioni nei dati ,permette  la capacità di generalizzare bene ai dati non visti,però se varianza  troppo elevata porta  modelli ad adattarsi troppo ai dati ,quindi perde generalizzabilità  ) e viceversa. L'obiettivo è trovare un equilibrio ottimale tra bias e varianza per ottenere il miglior modello possibile.
+
+
+
+
+
+
+
+
+2. **Complessità del modello e interpretabilità**:
+   - **Complessità del modello**: Rappresenta la quantità di dettagli o intricata struttura che il modello può catturare dai dati. Modelli più complessi (come reti neurali profonde) possono ottenere prestazioni migliori, ma possono essere più difficili da interpretare e spiegare.
+   - **Interpretabilità**: Rappresenta la facilità con cui il modello può essere compreso e spiegato agli utenti. Modelli più semplici (come regressione lineare o alberi decisionali) sono generalmente più interpretabili.
+   - Trade-off: Aumentare la complessità del modello può portare a una maggiore precisione, ma può diminuire l'interpretabilità. È necessario bilanciare la complessità del modello con la necessità di interpretare e comprendere le sue previsioni.
+
+Questi sono solo alcuni esempi di trade-off comuni nel machine learning. È importante riconoscere e gestire questi trade-off durante lo sviluppo e la valutazione dei modelli, poiché possono influenzare le prestazioni e l'utilità del modello in diverse applicazioni e contesti.
+
+
+```{r}
+library(caret)
+metric="ROC"
+set.seed(1234)
+
+modelLookup("glm")
+
+Control=trainControl(method= "cv",number=10,classProbs = TRUE,
+                     summaryFunction = twoClassSummary)
+glmPP=train(lv_bmi~. ,data=training2, method = "glm", preProcess=c("corr", "nzv","BoxCox"), 
+            trControl = Control, tuneLength=5, trace=TRUE, metric=metric, 
+            na.action=na.pass)
+glmPP
+
+# 1.2 tune different model in caret #######
+#     stabilire quale metrica usare per i vari models e tunarli tutti con questa metrica#####
+
+# fate tenfold validation k=10, qui con pochi dati k=5
+
+confusionMatrix(glmPP)#Accuracy (average) : 0.9829
+summary(glmPP)
+
+P_Pred <- predict(glmPP, training2, type = "prob")#CALCOLIAMO LE PREVISTE SU TRAINNING ,SALVA COME POST IRIOR ,CI DA PROBABILITA POSTERIRORI DI ESSERE SIA DI CLASSE 1 O 0 PER ENTRAMBE LE CLASSI DEL TARGET 
+head(P_Pred)
+
+#' predicted target,QUINDI ANDREMO A RICAVARE I VALORI DEL TARGET PREVISTO SUL DT DI
+#'  TRAINNG ANDANDO A INVOCARE LA FUNZIONE RAW CHE APPLICA SOGLIA DI 0.5 PER PASSARE
+#'   DALLA POST IRIOR AL TARGET PREVISTO 
+y_Pred <- predict(glmPP, training2, type = "raw")
+head(y_Pred)
+
+
+confusionMatrix(y_Pred, training2$lv_bmi,positive = "X1")#funziona :)
+
+
+y_Pred_logistico_test <- predict(glmPP, testing2, type = "raw")
+head(y_Pred)
+
+
+confusionMatrix(y_Pred_logistico_test, test_chgoff$lv_bmi,positive = "X1")#funziona :)
+
+
+
+
+```
+
+
+
+#scelta del modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati 
+
+
+```{r}
+# ggplot(glmPP)#ggplot mostra al variare dei parametri di tuninig come cambia prestazioni roc o altro 
+set.seed(1234)
+whichTwoPct <- tolerance(glmPP$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+glmPP$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_logistico_test, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "lightblue", high = "blue") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+
+##x######################################################################################################
+
+#mod PLS(gli serve selezione variabili)
+
+
+Il modello PLS (Partial Least Squares) è una tecnica di regressione e di riduzione della dimensionalità utilizzata nel contesto del machine learning,è un metodo che combina la regressione multipla e la riduzione dei dati mediante la creazione di componenti latenti.
+
+Come funziona:
+ è progettato per  problemi in cui ci sono molte variabili indipendenti (o predittori) e dove  sono altamente correlate tra loro o esistono multicollinearità. Il PLS cerca di trovare delle componenti latenti che sono combinazioni lineari delle variabili originali e che sono correlate con la variabile dipendente.
+Il processo di PLS coinvolge la costruzione iterativa di queste componenti latenti, chiamate anche fattori o componenti principali parziali, che massimizzano la covarianza tra i predittori e la variabile dipendente.
+
+
+
+Quando si usa e perché:
+Il modello PLS viene utilizzato  con dataset ad alta dimensionalità e multicollinearità tra le variabili. Alcuni esempi di applicazioni includono la previsione di vendite al dettaglio, la modellazione chimica e biologica, la previsione finanziaria e altro ancora. Si usa perché:
+Affronta la multicollinearità: Il PLS è efficace nel gestire dataset in cui le variabili indipendenti sono altamente correlate tra loro.
+Riduzione della dimensionalità: Il PLS consente di ridurre la dimensionalità del dataset mantenendo comunque la maggior parte dell'informazione rilevante per la variabile dipendente.
+Prestazioni predictive: Il PLS è spesso utilizzato quando l'obiettivo principale è la previsione di una variabile dipendente.
+
+
+
+Preprocessing:
+Standardizzazione delle variabili: Standardizzare le variabili per garantire che abbiano la stessa scala e facilitare il processo di ottimizzazione.
+Trattamento dei dati mancanti: Gestire eventuali dati mancanti nelle variabili indipendenti.
+Gestione dell'outlier: Identificare e trattare eventuali valori anomali nel dataset.
+
+
+Selezione delle feature: Se necessario, eseguire una selezione delle feature per ridurre il numero di variabili considerate nel modello.
+
+
+Parametri di tuning:
+Numero di componenti: Specifica il numero di componenti latenti da considerare nel modello. È possibile selezionare il numero ottimale di componenti utilizzando tecniche di validazione incrociata o altre metodologie.
+Metodo di selezione del numero di componenti: Determina il metodo utilizzato per selezionare il numero ottimale di componenti, come la validazione incrociata o criteri di informazione come AIC o BIC.
+
+
+
+
+
+
+
+
+
+
+```{r}
+set.seed(1234)
+#pls  on selected covariates
+library(caret)
+library(caretEnsemble)
+
+modelLookup("pls")
+
+Control=trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)#sampling = "down,""up" per fare under/oversampling senza comando down train di prima 
+
+grid <-expand.grid(ncomp=c(1,2,3,4))#numero di componenti 
+
+##
+#pre<-preProcess(datasetgiusto,method=c("center","scale"))
+
+
+pls=train(lv_bmi~.,data=training2 , method = "pls", 
+          trControl = Control, tuneLength=5,tuneGrid=grid,metric="ROC",preProcess=c("scale","center"),na.action = na.pass)
+pls
+plot(pls)
+confusionMatrix(pls)#Accuracy (average) : 0.9829
+#summary(pls) non va 
+
+P_Pred_pls <- predict(pls, training2, type = "prob")#CALCOLIAMO LE PREVISTE SU TRAINNING ,SALVA COME POST IRIOR ,CI DA PROBABILITA POSTERIRORI DI ESSERE SIA DI CLASSE 1 O 0 PER ENTRAMBE LE CLASSI DEL TARGET 
+head(P_Pred_pls)
+
+# predicted target,QUINDI ANDREMO A RICAVARE I VALORI DEL TARGET PREVISTO SUL DT DI TRAINNG ANDANDO A INVOCARE LA FUNZIONE RAW CHE APPLICA SOGLIA DI 0.5 PER PASSARE DALLA POST IRIOR AL TARGET PREVISTO 
+y_Pred_pls <- predict(pls, training2, type = "raw")
+head(y_Pred_pls)
+
+
+confusionMatrix(y_Pred_pls, training2$lv_bmi,positive = "X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+length(y_Pred_pls)
+length(training2$lv_bmi)
+#PERFORMANCE SU TEST
+y_Pred_pls_TETS <- predict(pls, testing2, type = "raw")
+
+confusionMatrix(y_Pred_pls_TETS, test_chgoff$lv_bmi,positive = "X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+```
+
+
+#scelta del modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+```{r}
+set.seed(1234)
+ggplot(pls)
+
+whichTwoPct <- tolerance(pls$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+pls$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_pls_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "lightblue", high = "blue") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+##W########################################################################################################################################################
+
+
+
+#mod random(forest)tree
+
+
+Il modello Random Forest è un algoritmo di apprendimento supervisionato utilizzato per problemi di classificazione
+Si basa su un insieme di alberi decisionali, chiamati "foresta", e utilizza il principio dell'aggregazione per migliorare le prestazioni predittive e ridurre l'overfitting.
+
+
+Come funziona:
+ Ogni albero viene costruito utilizzando un sottoinsieme casuale dei dati di addestramento e un sottoinsieme casuale delle variabili (caratteristiche). Questo processo di campionamento casuale e costruzione dell'albero porta a una diversità tra gli alberi della foresta.
+ Durante la fase di previsione, ogni albero della foresta emette una previsione per l'istanza in input e la previsione finale viene ottenuta mediante una combinazione delle previsioni di tutti gli alberi. Per problemi di classificazione, la classe predetta è solitamente determinata tramite voto a maggioranza tra gli alberi. 
+
+
+Quando si usa e perché:
+Il Random Forest è ampiamente utilizzato in una varietà di applicazioni, inclusi il riconoscimento di pattern, la previsione e il supporto decisionale. 
+
+- È robusto agli outlier e al rumore nei dati.
+- Gestisce efficacemente dataset ad alta dimensionalità e grandi quantità di dati.
+- È meno soggetto all'overfitting rispetto agli alberi decisionali singoli grazie alla sua natura aggregata.
+- È altamente parallelo e può essere facilmente parallelizzato su hardware moderni per addestrare modelli su grandi dataset.
+
+
+
+Preprocessing:
+
+- Trattamento dei dati mancanti: Gestire i valori mancanti nelle variabili indipendenti.
+- Codifica delle variabili categoriche: Trasformare le variabili categoriche in una forma che il modello possa comprendere, ad esempio utilizzando la codifica one-hot (dummy encoding).
+- Standardizzazione delle variabili: Standardizzare le variabili se l'algoritmo di random forest utilizzato  richiede che le variabili abbiano la stessa scala.
+- Selezione delle feature: Se necessario, eseguire una selezione delle feature per ridurre la complessità del modello e migliorare le prestazioni.
+
+
+
+Parametri di tuning:
+
+- Numero di alberi (n_estimators): Specifica il numero di alberi da includere nella foresta.
+- Massima profondità degli alberi (max_depth): Limita la profondità massima di ciascun albero per evitare l'overfitting.
+- Numero minimo di campioni per dividere un nodo (min_samples_split): Specifica il numero minimo di campioni richiesti per suddividere un nodo interno.
+- Numero minimo di campioni in una foglia (min_samples_leaf): Specifica il numero minimo di campioni richiesti per essere presenti in una foglia dell'albero.
+
+
+
+
+
+```{r}
+#useremo questo 
+set.seed(1234)
+ library(caret)
+library(caretEnsemble)
+# RF is the most used algoritmh, simple, well performing, no preprocessing require.
+# mainly very useful to extract var importance...being a model selector for oter models requiring it######
+
+
+
+# normal tuning with caret: mtry number of var maximizing a metric of interest....######
+
+modelLookup("rf")
+
+
+control <- trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+tunegrid <- expand.grid(.mtry=c(1:5))#.mtry numero di variabili prdittive da considerare per suddividere nodo ,nodesize=c(1,5,10) numero minmom di osservazioni in un nodo terminale 
+
+#pre<-preProcess(dataset,method=c("center","scale"))
+
+rfTune1 <- train(lv_bmi~., data=training2, method="rf", metric="ROC", tuneGrid=tunegrid, tuneLength = 5,
+                ntree=150, trControl=control,na.action = na.pass)
+
+y_Pred_rf1 <- predict(rfTune1, train_chgoff, type = "raw")
+confusionMatrix(y_Pred_rf1, train_chgoff$lv_bmi,positive="X1")#funziona :) --> in dt train ho class:1,2,3,4 invece in train_chgoff  dt ho Class: x1,x2,x3,x4 modifico prima con makes.names 
+confusionMatrix(rfTune1)
+#y_Pred_rf1_prob <- predict(rfTune1, train, type = "prob")
+
+
+plot(rfTune1)
+# performance by mtry
+rfTune1$results #metriche di confronto per ogni modello
+
+# final model and performance
+getTrainPerf(rfTune1) #Mostra modello vincente, attenzione al valore basso di sensitivity
+
+#Plottiamo importanza delle variabili
+Vimportance <- varImp(rfTune1)
+plot(Vimportance)
+#Si nota che le prime tre variabili siano le più importanti, le rimanenti sono poco importanti
+
+
+#PERFORMANCE SU TEST
+y_Pred_RF_TETS <- predict(rfTune1, testing2, type = "raw")
+
+confusionMatrix(y_Pred_RF_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+```
+
+
+#scelta modello finale con parametri e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+```{r}
+set.seed(1234)
+ggplot(rfTune1)
+RMSE<-sqrt(mean(test_chgoff$lv_bmi-predict(rfTune1,test_chgoff))^2)
+
+whichTwoPct <- tolerance(rfTune1$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+rfTune1$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+
+#grafico ggplot2 confusion matrix
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_RF_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "lightblue", high = "blue") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+#w#################################################################################################################################
+
+
+
+
+
+#mod gradient boosting 
+
+ 
+ 
+ Come funziona:
+Il Gradient Boosting funziona creando una sequenza di modelli più deboli, solitamente alberi decisionali, in cui ciascun nuovo modello cerca di correggere gli errori dei modelli precedenti. Durante la fase di addestramento, ogni nuovo albero viene addestrato per predire il residuo (differenza tra la previsione attuale e il vero valore) del modello complessivo finora. Successivamente, il modello complessivo viene aggiornato sommando il contributo del nuovo modello, pesato da un fattore di apprendimento (learning rate), che controlla la velocità di apprendimento.
+ Durante la fase di previsione, i modelli deboli vengono combinati attraverso un processo di somma pesata per produrre la previsione finale.
+ 
+ 
+ 
+Quando si usa e perché:
+Il Gradient Boosting è comunemente usato quando si desidera massimizzare le prestazioni predittive su un dato insieme di dati. 
+
+- Produce modelli ad alte prestazioni: Il Gradient Boosting è noto per produrre modelli altamente predittivi.
+- Gestisce dataset di grandi dimensioni: È efficace anche con dataset ad alta dimensionalità e con un gran numero di variabili.
+- Riduce l'overfitting: Attraverso il processo iterativo di addestramento, il Gradient Boosting è in grado di ridurre l'overfitting, specialmente quando vengono utilizzate regolarizzazioni come il tuning del parametro di apprendimento e la profondità massima degli alberi.
+ 
+ 
+ 
+ Preprocessing:
+
+- Trattamento dei dati mancanti: Gestire i valori mancanti nelle variabili indipendenti.
+- Codifica delle variabili categoriche: Trasformare le variabili categoriche in una forma che il modello possa comprendere, ad esempio utilizzando la codifica one-hot (dummy encoding).
+- Standardizzazione delle variabili: Standardizzare le variabili se l'algoritmo di Gradient Boosting utilizzato  richiede che le variabili abbiano la stessa scala.
+- Selezione delle feature: Se necessario, eseguire una selezione delle feature per ridurre la complessità del modello e migliorare le prestazioni.
+ 
+ 
+ 
+ Parametri di tuning:
+
+- Numero di alberi (n_estimators): Specifica il numero di alberi da includere nella sequenza.
+- Profondità massima degli alberi (max_depth): Limita la profondità massima di ciascun albero per evitare l'overfitting.
+- Learning rate (fattore di apprendimento): Controlla la velocità di apprendimento del modello.
+- Subsample: Specifica la frazione dei dati da utilizzare per addestrare ciascun albero.
+- Loss function: Specifica la funzione di perdita da ottimizzare durante l'addestramento.
+ 
+ 
+
+ 
+ 
+
+```{r}
+#library(gbm3)
+set.seed(1234)
+library(caret)
+library(caretEnsemble)
+
+modelLookup("gbm")
+
+
+
+control <- trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+#tunegrid <- expand.grid(n.trees=c(50,100,150),interaction.depth=c(1,2,3),shrinkage=c(0.01,0.1,0.3))#mntres  numero di alberi da costruire  ,interaction.depth profondita massima di interaziojne tra le variabili ,shrinkage fatttore di apprendimento 
+
+#pre<-preProcess(dataset,method=c("center","scale"))
+
+gbmFit4 <- train(lv_bmi ~ ., data = training2, 
+                 method = "gbm", 
+                 trControl = control, 
+                 verbose = FALSE, 
+                 tuneGrid = expand.grid(interaction.depth = 4,
+                                       n.trees = 100,
+                                       shrinkage = .1,
+                                       n.minobsinnode = 20),
+                 na.action=na.pass,tuneLength = 5,metric="ROC")
+
+gbmFit4
+
+y_Pred_gbm <- predict(gbmFit4, train_chgoff, type = "raw")#type="raw" crea variabile nella quale come elementi ha x1,x2,x3,x4
+y_Pred_gbm <- predict(gbmFit4, train_chgoff,positive="X1")#di default e type="raw"
+
+head(y_Pred_gbm)
+
+
+confusionMatrix(y_Pred_gbm, training2$lv_bmi)#funziona :)
+confusionMatrix(gbmFit4)
+
+
+#PERFORMANCE SU TEST
+y_Pred_gbm_TETS <- predict(gbmFit4, testing2, type = "raw")
+
+confusionMatrix(y_Pred_gbm_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+
+
+```
+
+
+
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+
+```{r}
+
+# ggplot(gbmFit4)
+set.seed(1234)
+whichTwoPct <- tolerance(gbmFit4$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+gbmFit4$results[whichTwoPct,1:7]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_gbm_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "lightblue", high = "blue") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+#w#################################################################################################################################
+
+#mod knn(gli serve selezione variabili)-->fa storie su metrica roc 
+
+
+Il modello K-Nearest Neighbors (KNN) è un algoritmo di apprendimento supervisionato
+ metodo semplice ma efficace che si basa sull'idea che le istanze simili tendono ad avere etichette simili (per la classificazione)
+
+
+Come funziona:
+
+- Addestramento: Durante la fase di addestramento, l'algoritmo memorizza semplicemente i dati di addestramento.
+- Classificazione (o regressione): Per classificare un nuovo punto dati, l'algoritmo calcola la distanza tra il nuovo punto e tutti i punti di addestramento. Tipicamente, si utilizza la distanza euclidea, ma ci sono altre metriche di distanza possibili.
+- Selezione dei vicini: L'algoritmo seleziona i k punti più vicini al nuovo punto in base alla distanza calcolata.
+- Voto (o media): Per la classificazione, l'etichetta del nuovo punto è determinata tramite un voto a maggioranza tra le etichette dei k punti più vicini. Per la regressione, il valore del nuovo punto è determinato dalla media dei valori dei k punti più vicini.
+- Predizione: Il nuovo punto viene quindi classificato (o predetto per la regressione) in base alla decisione presa.
+
+
+
+
+Quando si usa e perché:
+Il modello KNN è utilizzato  specialmente quando la struttura dei dati non è conosciuta a priori o quando si ritiene che le istanze simili abbiano etichette (o valori) simili. Alcuni motivi per utilizzare KNN includono:
+
+- Semplicità: È semplice da implementare e comprendere.
+-Robustezza: Funziona bene con dataset con rumore e non lineari.
+- Adattabilità: Può essere utilizzato per problemi di classificazione e regressione.
+
+
+
+
+Preprocessing:
+
+- Standardizzazione delle variabili: Poiché KNN si basa sulla distanza, è importante standardizzare le variabili in modo che abbiano la stessa scala.
+- Trattamento dei dati mancanti: Gestire eventuali valori mancanti nei dati.
+- Normalizzazione: Normalizzare i dati può essere utile per garantire che nessuna variabile influenzi in modo eccessivo la distanza.
+
+
+
+Parametri di tuning:
+
+- Numero di vicini (K): Specifica il numero di punti di addestramento più vicini da considerare durante la classificazione o la regressione.
+- Metrica di distanza: Specifica la metrica di distanza utilizzata per calcolare la distanza tra le istanze.
+- Funzione di peso: Specifica come assegnare i pesi ai vicini in base alla loro distanza.
+- Algoritmo di ricerca dei vicini: Specifica l'algoritmo utilizzato per trovare i vicini più vicini, come "ball tree", "kd tree" o "brute force".
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+set.seed(1234)
+ library(caret)
+library(caretEnsemble)
+modelLookup("knn")
+
+
+
+
+ctrl =trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)#,method="repeatedcv",repeats=5 
+grid = expand.grid(.k=seq(5,20,3))#MIGLIOR VALORE KAPPA TUNATO IN UN A GRILIA DA 5 E 20 CON PASSO DI 3 (QUINDI 1?:5 ,2?:8 ,3?:11,ECC)
+
+#pre<-preProcess(dataset,method=c("center","scale"))
+#Grid1 = expand.grid(.k      =seq(1,20, by=3)               )
+# grid = expand.grid(k=seq(1,59,by=2))
+
+knn=train(lv_bmi~.,
+          data=training2,method = "knn",
+          trControl = ctrl, tuneLength=5, na.action = na.pass,
+          tuneGrid=grid, preProcess=c("scale","corr"),metric="ROC")#,"corr","center",
+knn
+plot(knn)
+y_Pred_knn <- predict(knn, training2, type = "raw")
+head(y_Pred_knn)
+
+
+confusionMatrix(y_Pred_knn, train_chgoff$lv_bmi,positive="X1")
+
+
+confusionMatrix(knn)
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_knn_TETS <- predict(knn, testing2, type = "raw")
+
+confusionMatrix(y_Pred_knn_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+```
+
+
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+
+```{r}
+set.seed(1234)
+ggplot(knn)
+# autoplot(knn)
+# results<-knn$results 
+# results |> ggplot(aes(x=k,y=RMSE))+geom_point()+geom_line()
+# RMSE<-sqrt(mean(test_chgoff$lv_bmi-predict(knn,test_chgoff))^2)
+whichTwoPct <- tolerance(knn$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+knn$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_knn_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "cyan2", high = "red1") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+
+
+#w#################################################################################################################################
+
+
+
+
+
+#mod naive bayes (gli serve selezione variabili)-->fa storie su metrica roc  ->funziona anche con training2
+
+
+Classificazione bayesiana: La classificazione bayesiana è un approccio per la classificazione di dati basata sul teorema di Bayes. In questo contesto, il teorema di Bayes viene utilizzato per stimare la probabilità che un'istanza appartenga a una determinata classe, dati i suoi attributi. Questo metodo può essere implementato tramite diverse tecniche, come il classificatore bayesiano ingenuo (Naive Bayes) e i modelli bayesiani.
+
+Apprendimento probabilistico: Alcuni algoritmi di machine learning utilizzano approcci probabilistici per fare previsioni e prendere decisioni. Questi algoritmi incorporano il teorema di Bayes per stimare le probabilità delle diverse classi o degli eventi in base ai dati osservati. Ad esempio, i modelli grafici probabilistici, come le reti bayesiane, utilizzano il teorema di Bayes per rappresentare e inferire le relazioni probabilistiche tra le variabili di interesse.
+
+
+Quando si usa e perché:
+ è comunemente usato in applicazioni di classificazione di testi, quali il filtraggio di spam e la classificazione di documenti, dove la rappresentazione dei dati è spesso in forma di "borsa di parole" (bag-of-words). 
+
+- Semplicità: È facile da implementare e comprendere.
+- Efficienza computazionale: È veloce da addestrare e predire.
+- Bassi requisiti di dati: Funziona bene con dataset di piccole dimensioni e può gestire grandi spazi delle feature.
+
+
+Preprocessing( PER OPERAZIONI DI TEXT MINING):
+
+- Rimozione di caratteri speciali: Rimuovere caratteri speciali, punteggiatura e altri simboli non rilevanti.
+- Tokenizzazione: Suddividere il testo in parole o token.
+- Rimozione delle stop words: Rimuovere parole comuni che non aggiungono valore predittivo, come "the", "and", "is", ecc.
+- Stemming o lemmatization: Ridurre le parole alla loro forma base (stemming) o al lemma (lemmatization) per ridurre la complessità.
+
+Parametri di tuning:
+Il modello Naive Bayes è generalmente meno sensibile ai parametri rispetto ad altri modelli di machine learning. Tuttavia, ci possono essere alcuni parametri da considerare:
+
+- Tipo di distribuzione: Per variabili continue, è possibile specificare la distribuzione delle probabilità, come la distribuzione normale (GaussianNB), la distribuzione multinomiale (MultinomialNB) o la distribuzione di Bernoulli (BernoulliNB).
+- Parametri di smoothing: Alcuni modelli Naive Bayes, come MultinomialNB e BernoulliNB, possono richiedere un parametro di smoothing per evitare problemi con probabilità nulle o basse.
+
+
+```{r}
+set.seed(1234)
+ library(caret)
+library(caretEnsemble)
+library(naivebayes)
+modelLookup("naive_bayes")
+
+
+
+ctrl =trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+#pre<-preProcess(dataset,method=c("center","scale"))
+
+
+naivebayes=train(lv_bmi~.,
+                 data=training2,method = "naive_bayes",
+                 trControl = ctrl, tuneLength=5, preProcess=c("scale","corr"),metric="ROC" ,na.action = na.pass) 
+naivebayes
+y_Pred_nb <- predict(naivebayes, training2, type = "raw")
+head(y_Pred_nb)
+
+
+confusionMatrix(y_Pred_nb, train_chgoff$lv_bmi,positive="X1")
+confusionMatrix(naivebayes)
+
+
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_naivebayes_TETS <- predict(naivebayes, testing2, type = "raw")
+
+confusionMatrix(y_Pred_naivebayes_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+
+
+```
+
+
+
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+
+```{r}
+
+# ggplot(naivebayes)
+set.seed(1234)
+whichTwoPct <- tolerance(naivebayes$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+naivebayes$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_naivebayes_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "cyan", high = "red") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+#w#################################################################################################################################
+
+
+
+#mod lda -->fa storie su metrica roc 
+
+
+Tuttavia, è strettamente correlato al machine learning, in quanto può essere utilizzato per l'estrazione di caratteristiche e la riduzione della dimensionalità nei dati testuali.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Parametri di tuning:
+I principali parametri di tuning per il modello LDA includono:
+
+- Numero di topic: Specifica il numero di topic nascosti da identificare nel corpus. È un iperparametro importante che deve essere regolato per ottenere risultati significativi.
+- Alpha: Parametro di Dirichlet che controlla la distribuzione di topic per ogni documento. Valori più alti di alpha rendono i documenti più concentrati su un numero più piccolo di topic.
+- Beta: Parametro di Dirichlet che controlla la distribuzione di parole per ogni topic. Valori più alti di beta rendono i topic più concentrati su un numero più piccolo di parole
+
+
+
+
+
+
+
+
+
+
+```{r}
+set.seed(1234)
+ 
+ctrl =trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+#pre<-preProcess(dataset,method=c("center","scale"))
+
+
+modelLookup("lda")
+
+
+lda=train(lv_bmi~.,
+                 data=training2,method = "lda",
+                 trControl = ctrl,tuneLength = 5,metric="ROC" ,na.action = na.pass,preProcess=c("corr")) 
+lda
+y_Pred_lda <- predict(lda, training2, type = "raw")
+head(y_Pred_lda )
+
+
+confusionMatrix(y_Pred_lda , train_chgoff$lv_bmi,positive="X1")
+confusionMatrix(lda)
+
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_lda_TETS <- predict(lda, testing2, type = "raw")
+
+confusionMatrix(y_Pred_lda_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+```
+
+
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+```{r}
+
+# ggplot(lda)
+set.seed(1234)
+whichTwoPct <- tolerance(lda$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+lda$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_lda_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "cyan2", high = "red1") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+#w#################################################################################################################################
+
+
+
+
+
+#mod qda -->fa storie su metrica roc -->mi da errore perche si creano missing value 
+
+Il modello QDA (Quadratic Discriminant Analysis) è un algoritmo di apprendimento supervisionato, È una tecnica che assume che le distribuzioni delle features siano gaussiane e stima una distribuzione gaussiana separata per ciascuna classe.
+
+Come funziona:
+Il QDA si basa sul teorema di Bayes e utilizza le distribuzioni di probabilità condizionata delle features dato che un'istanza appartiene a una classe specifica per effettuare le predizioni. Rispetto al modello LDA (Linear Discriminant Analysis), che assume che le covarianze delle features siano condivise tra le classi, il QDA stima una matrice di covarianza separata per ciascuna classe.
+
+Durante la fase di addestramento, il QDA stima i parametri delle distribuzioni gaussiane per ciascuna classe utilizzando i dati di addestramento. Durante la fase di previsione, calcola la probabilità che un'istanza appartenga a ciascuna classe utilizzando le distribuzioni gaussiane stimate e quindi predice la classe con la probabilità più alta.
+
+
+Quando si usa e perché:
+Il modello QDA è utilizzato quando le distribuzioni delle features per le diverse classi non possono essere approssimate in modo adeguato da una singola distribuzione gaussiana con covarianze condivise. Alcuni motivi per utilizzare il QDA includono:
+
+Distribuzioni delle features diverse: Quando le distribuzioni delle features per le diverse classi hanno variazioni significative e non possono essere ben approssimate da una singola distribuzione gaussiana.
+Flessibilità: Il QDA è più flessibile del modello LDA in quanto non richiede l'assunzione che le covarianze siano condivise tra le classi.
+
+
+Preprocessing:
+I passaggi di preprocessing per il modello QDA possono includere:
+
+- Standardizzazione delle variabili: Poiché il QDA si basa sulle distribuzioni gaussiane, è importante standardizzare le variabili in modo che abbiano la stessa scala.
+- Trattamento dei dati mancanti: Gestire eventuali valori mancanti nei dati.
+- Rimozione delle features non informative: Rimuovere le features che non forniscono informazioni utili per la classificazione.
+
+Parametri di tuning:
+I principali parametri di tuning per il modello QDA sono solitamente legati alla stima delle distribuzioni gaussiane per le diverse classi e possono includere:
+
+- Matrici di covarianza per le diverse classi: Il QDA stima una matrice di covarianza separata per ciascuna classe, che può influenzare le decisioni di classificazione.
+- Parametri di regolarizzazione: Possono essere introdotti parametri di regolarizzazione per evitare il problema di overfitting, soprattutto se il numero di features è grande rispetto al numero di campioni.
+
+
+```{r}
+set.seed(1234)
+ 
+ctrl =trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+#pre<-preProcess(dataset,method=c("center","scale"))
+
+
+modelLookup("qda")
+
+
+
+qda=train(lv_bmi~.,
+                 data=training2,method = "qda",
+                 trControl = ctrl, tuneLength=5,metric="ROC" ,na.action = na.omit) 
+qda
+y_Pred_qda <- predict(qda, training2, type = "raw")
+head(y_Pred_qda )
+
+
+confusionMatrix(y_Pred_qda , train_chgoff$lv_bmi,positive="X1")
+confusionMatrix(qda)
+
+
+#PERFORMANCE SU TEST
+y_Pred_qda_TETS <- predict(qda, testing2, type = "raw")
+
+confusionMatrix(y_Pred_qda_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+```
+
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+
+```{r}
+
+# ggplot(qda)
+set.seed(1234)
+whichTwoPct <- tolerance(qda$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+qda$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_qda_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "cyan2", high = "red1") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+#w#################################################################################################################################
+
+
+
+
+
+#modello ridge 
+
+
+Il modello Ridge è una tecnica di regressione utilizzata nel contesto del machine learning per affrontare problemi di regressione lineare. È particolarmente utile quando si desidera evitare l'overfitting, ovvero quando il modello si adatta troppo ai dati di addestramento e perde la capacità di generalizzazione ai dati non visti.
+
+
+
+Come funziona:
+Il modello Ridge si basa sulla regressione lineare ordinaria (OLS), ma aggiunge un termine di regolarizzazione L2 alla funzione obiettivo. Questo termine di regolarizzazione penalizza i coefficienti delle variabili predittive, limitando la loro crescita e aiutando a prevenire l'overfitting.
+
+
+Durante la fase di addestramento, l'obiettivo è trovare i valori ottimali dei coefficienti θ che minimizzano la funzione obiettivo. Questo può essere fatto utilizzando metodi come la discesa del gradiente o la soluzione analitica.
+
+
+
+Quando si usa e perché:
+Il modello Ridge è utilizzato quando si desidera ridurre l'overfitting e migliorare la capacità di generalizzazione del modello. Alcuni motivi per utilizzare Ridge includono:
+
+- Variabili collineari: Quando ci sono variabili altamente correlate nel dataset, Ridge può aiutare a stabilizzare i coefficienti della regressione.
+- Dataset con molte variabili: In presenza di dataset con un gran numero di variabili predittive, Ridge può ridurre la complessità del modello e migliorare le prestazioni.
+
+
+Preprocessing:
+
+- Standardizzazione delle variabili: Poiché Ridge si basa sulla magnitudine dei coefficienti, è importante standardizzare le variabili in modo che abbiano la stessa scala.
+- Gestione dei dati mancanti: Trattare eventuali valori mancanti nelle variabili predittive.
+- Trasformazione delle variabili: Se necessario, eseguire trasformazioni come la log-trasformazione per rendere le variabili più simili alla distribuzione normale.
+
+
+Parametri di tuning:
+
+- Alpha α: Il parametro di regolarizzazione che controlla la forza della penalizzazione. Valori più alti di α aumentano la forza della penalizzazione.
+- Solver: Il metodo utilizzato per trovare i valori ottimali dei coefficienti. Alcuni solver comuni includono "auto", "svd", "cholesky", "sparse_cg", "sag" e "saga"
+
+
+
+```{r}
+set.seed(1234)
+ 
+ctrl =trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+#pre<-preProcess(dataset,method=c("center","scale"))
+
+modelLookup("glmnet")
+
+
+ridge=train(lv_bmi~.,
+                 data=training2,method = "glmnet",
+                 trControl = ctrl, tuneLength=5,metric="ROC" ,tunegrid =expand.grid(alpha=0,lambda=seq(0,1,by = 0.1)),na.action = na.pass) 
+ridge
+y_Pred_ridge <- predict(ridge, training2, type = "raw")
+head(y_Pred_ridge )
+
+
+confusionMatrix(y_Pred_ridge , train_chgoff$lv_bmi,positive="X1")
+confusionMatrix(ridge)
+
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_ridge_TETS <- predict(ridge, testing2, type = "raw")
+
+confusionMatrix(y_Pred_ridge_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+```
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+
+```{r}
+
+ggplot(ridge)
+set.seed(1234)
+whichTwoPct <- tolerance(ridge$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+ridge$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_ridge_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "cyan", high = "red") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+#w#################################################################################################################################
+
+
+
+
+
+
+
+#modello lasso (solo due variabili )
+
+
+Il modello LASSO (Least Absolute Shrinkage and Selection Operator) è un'altra tecnica di regressione utilizzata nel contesto del machine learning per affrontare problemi di regressione lineare. Come il modello Ridge, anche il LASSO è utile per gestire l'overfitting e per selezionare le variabili più importanti per il modello.
+
+
+Come funziona:
+Il modello LASSO aggiunge un termine di regolarizzazione L1 alla funzione obiettivo della regressione lineare ordinaria. Questo termine di regolarizzazione penalizza i coefficienti delle variabili predittive, ma a differenza del modello Ridge, tende a impostare alcuni coefficienti a zero. 
+Questo porta ad una selezione delle variabili, rendendo il modello più sparsivo.
+
+Durante la fase di addestramento, l'obiettivo è trovare i valori ottimali dei coefficienti 
+θ che minimizzano la funzione obiettivo. Anche in questo caso, ciò può essere fatto utilizzando metodi come la discesa del gradiente o la soluzione analitica.
+
+
+Quando si usa e perché:
+Il modello LASSO è utilizzato quando si desidera ridurre l'overfitting, selezionare le variabili più importanti e ottenere un modello più interpretabile. Alcuni motivi per utilizzare LASSO includono:
+
+- Selezione delle variabili: Quando si desidera identificare le variabili più rilevanti e ridurre la dimensionalità del modello.
+- Sparsità delle soluzioni: Quando si desidera ottenere un modello con poche variabili non nulle, rendendo più facile l'interpretazione.
+
+
+
+Preprocessing:
+
+- Standardizzazione delle variabili: È importante standardizzare le variabili in modo che abbiano la stessa scala.
+- Gestione dei dati mancanti: Trattare eventuali valori mancanti nelle variabili predittive.
+- Trasformazione delle variabili: Se necessario, eseguire trasformazioni come la log-trasformazione per rendere le variabili più simili alla distribuzione normale.
+
+
+Parametri di tuning:
+
+- Alpha (α): Il parametro di regolarizzazione che controlla la forza della penalizzazione. Valori più alti di α aumentano la forza della penalizzazione.
+- Selection threshold: Il valore che controlla la soglia per la selezione delle variabili. Coefficienti con valore assoluto inferiore a questa soglia vengono impostati a zero.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+set.seed(1234)
+ 
+ctrl =trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+
+
+modelLookup("glmnet")
+
+
+#pre<-preProcess(dataset,method=c("center","scale"))
+#preProcess=c("scale","nzv")
+
+#grid = expand.grid(.alpha=1,.lambda=seq(0, 1, by = 0.01))
+
+
+
+lasso=train(lv_bmi~.,
+                 data=training2,method = "glmnet",
+                 trControl = ctrl, tuneLength=5,metric="ROC" , preProcess=c("scale","nzv"),tunegrid =expand.grid(.alpha=1,.lambda=seq(0,1,by = 0.1)),na.action = na.pass) 
+lasso
+y_Pred_lasso <- predict(lasso, training2, type = "raw")
+head(y_Pred_lasso )
+
+
+confusionMatrix(y_Pred_lasso , train_chgoff$lv_bmi,positive="X1")
+confusionMatrix(lasso)
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_lasso_TETS <- predict(lasso, testing2, type = "raw")
+
+confusionMatrix(y_Pred_lasso_TETS, test_chgoff$lv_bmi,positive="X1")#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+
+```
+
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+
+```{r}
+
+ggplot(lasso)
+set.seed(1234)
+whichTwoPct <- tolerance(lasso$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+lasso$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+#grafico ggplot2 confusion matrix 
+
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_lasso_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "lightblue", high = "darkred") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#w#################################################################################################################################
+
+
+
+#MOD SVM KERNEL RADIALE 
+
+Il modello SVM (Support Vector Machine) con kernel radiale, comunemente noto come SVM radiale o SVM con kernel gaussiano, è un algoritmo di apprendimento supervisionato utilizzato per problemi di classificazione e regressione. È particolarmente efficace in contesti in cui le relazioni tra le features e le etichette di classe sono complesse e non lineari.
+
+
+Come funziona:
+Il kernel radiale è un tipo di kernel utilizzato nelle SVM che consente di mappare i dati in uno spazio dimensionale più alto dove è più facile trovare un iperpiano che separa le classi
+
+
+Durante il processo di addestramento, l'SVM cerca di trovare l'iperpiano ottimale che massimizza il margine tra le classi nel nuovo spazio dimensionale definito dal kernel. L'iperpiano ottimale è scelto in modo da massimizzare la distanza tra i campioni più vicini di ciascuna classe, chiamati vettori di supporto.
+
+Durante la fase di previsione, l'SVM utilizza l'iperpiano per classificare nuovi campioni
+
+
+Quando si usa e perché:
+L'SVM con kernel radiale è utile quando si hanno dati non lineari o complessi e quando si desidera una buona capacità di generalizzazione. Alcuni motivi per utilizzare l'SVM radiale includono:
+
+- Classificazione non lineare: Quando i dati non possono essere separati linearmente nello spazio delle features.
+- Robustezza: L'SVM è robusto contro il rumore e funziona bene con dataset di piccole dimensioni.
+- Flessibilità: L'SVM con kernel radiale può adattarsi a una varietà di forme di decisione, rendendolo adatto per una vasta gamma di problemi di classificazione.
+
+
+Preprocessing:
+
+- Standardizzazione delle variabili: È importante standardizzare le variabili in modo che abbiano la stessa scala.
+- Trattamento dei dati mancanti: Gestire eventuali valori mancanti nei dati.
+- Selezione delle features: Se necessario, eseguire la selezione delle features per ridurre la complessità del modello.
+
+
+
+
+Parametri di tuning:
+
+- C: Il parametro di regolarizzazione C controlla il trade-off tra la larghezza del margine e la classificazione corretta dei campioni di addestramento. Valori più alti di C danno più peso alla classificazione corretta dei campioni di addestramento rispetto alla larghezza del margine.
+- Gamma (γ): Il parametro del kernel gamma controlla l'influenza di ogni campione di addestramento sul modello. Valori più alti di gamma rendono il modello più sensibile ai singoli campioni di addestramento.
+
+
+
+
+
+
+
+
+```{r}
+library(caret)
+set.seed(1234)
+ctrl = trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+#pre<-preProcess(dataset,method=c("center","scale"))
+modelLookup("svmRadial")
+
+
+
+
+svmrad<- train(lv_bmi~., training2,method = "svmRadial", trControl=ctrl,tuneLength = 5 ,na.action = na.pass,metric="ROC")#,expand.grid(sigma=seq(0.01,1, by =0.1),C=c(0.1,1,10,100))
+               
+               
+svmrad
+plot(svmrad)
+y_Pred_svmrad <- predict(svmrad, training2, type = "raw")
+
+confusionMatrix(y_Pred_svmrad,train_chgoff$lv_bmi)
+
+
+
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_svmrad_TETS <- predict(svmrad, testing2, type = "raw")
+
+confusionMatrix(y_Pred_svmrad_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+
+```
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+
+```{r}
+ggplot(svmrad)
+# ggplot.gafs(svmrad)
+# ggplot2::ggplot(svmrad)
+set.seed(1234)
+whichTwoPct <- tolerance(svmrad$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+svmrad$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+#grafico ggplot2 confusion matrix 
+con la libreria *ggplot2* costruiamo la Confusion Matrix del modello sui dati del dt di test  
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(ggplot2)
+
+# Creazione di dati di esempio
+set.seed(1234)
+# actual <- factor(sample(letters[1:3], 100, replace = TRUE))
+# predicted <- factor(sample(letters[1:3], 100, replace = TRUE))
+
+# Creazione della matrice di confusione
+conf_matrix<-confusionMatrix(y_Pred_svmrad_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+
+# Visualizzazione della matrice di confusione come grafico a barre
+ggplot(data = data.frame(conf_matrix$table, class = rownames(conf_matrix$table)), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq)) +
+  scale_fill_gradient(low = "lightblue", high = "blue") +
+  labs(x = "Actual", y = "Predicted", title = "Confusion Matrix") +
+  theme_minimal()
+
+```
+
+
+
+
+
+#w#################################################################################################################################
+
+
+
+
+#mod reti neurali  (gli serve selezione variabili)
+
+Le reti neurali sono un insieme di algoritmi di machine learning ispirati al funzionamento del cervello umano.Sono comunemente utilizzate per compiti di classificazione, regressione, riconoscimento di pattern e molte altre applicazioni.
+
+
+
+
+Come funzionano:
+Una rete neurale è composta da diversi strati di neuroni artificiali, o nodi, che sono organizzati in modo gerarchico. Ogni nodo è connesso a nodi nei livelli precedente e successivo tramite pesi che rappresentano la forza e la direzione della connessione. Durante la fase di addestramento, la rete neurale apprende a regolare questi pesi per minimizzare una funzione di costo, che misura la discrepanza tra le previsioni della rete e i valori reali dei dati di addestramento.
+
+Le reti neurali possono essere di vari tipi, tra cui:
+
+- Reti neurali feedforward: Le informazioni si spostano in una sola direzione, dall'input all'output, senza cicli o loop.
+- Reti neurali ricorrenti: Le connessioni tra i nodi formano cicli, consentendo alle reti di mantenere una memoria delle informazioni passate.
+- Reti neurali convoluzionali (CNN): Ottimizzate per l'elaborazione di dati strutturati in griglia, come immagini.
+
+
+Quando si usano e perché:
+
+
+- Riconoscimento di immagini e oggetti: Le CNN sono particolarmente efficaci per il riconoscimento di pattern in immagini.
+- Elaborazione del linguaggio naturale: Le reti neurali ricorrenti e altre architetture sono utilizzate per compiti come il riconoscimento di speech-to-text e il natural language processing.
+- Previsione di serie temporali: Le reti neurali possono essere utilizzate per modellare e predire dati sequenziali come le serie temporali finanziarie.
+
+
+Preprocessing:
+
+- Standardizzazione delle variabili: È importante standardizzare le features in modo che abbiano la stessa scala per evitare problemi di convergenza durante l'addestramento.
+- Gestione dei dati mancanti: Trattare eventuali valori mancanti nei dati.
+- Normalizzazione dei dati: Se i dati hanno una distribuzione non normale, è possibile applicare trasformazioni come la log-trasformazione per renderli più simili a una distribuzione normale.
+
+
+
+Parametri di tuning:
+
+- Numero di strati e nodi: Determina la complessità della rete.
+- Funzione di attivazione: Determina il comportamento dei nodi all'interno della rete.
+- Learning rate: La velocità con cui la rete aggiorna i pesi durante l'addestramento.
+- Batch size: Il numero di campioni utilizzati in ogni iterazione dell'addestramento.
+- Regolarizzazione: Parametri come il dropout e la penalizzazione L1/L2 possono essere utilizzati per evitare l'overfitting.
+
+
+
+
+
+```{r}
+library(caret)
+set.seed(1234)
+#'QUINDI IN SOSTANZA FACCIO STEPAIC(O CON ALBERI ) POI FACCIO COLLINEARITA 
+# moreover this is an optimistic metric on train...tune using cv
+
+# we missed scaling inputs...
+
+# use caret...more tuning and preporcessing######
+
+# Try the following:
+# 1. preprocess the data AND
+# 2. ESPECIALLY tune the architecture (size=#hidden neurons) and decay using cv
+# tuning  decay and neurons
+
+# size=(number of units in the hidden layer)
+# Weight decay= lambda, penalizes C(wij), the sum of squares of the weights wij
+# scale inputs
+
+
+#tuneGrid=tunegrid
+grid <- expand.grid(size=c(5,10,15), decay = c(0.1,0.01,0.001))#,maxit = c(100,200,300) non sono giusti 
+#method="nnet",   tuneGrid=Grid0  , preProcess=c("scale","corr","nzv"), trace=FALSE)
+
+#grid <- expand.grid(size=seq(2,25,length.out=5), decay =10^seq(-9.0,by=1))
+
+
+
+
+modelLookup("nnet")
+
+ 
+ctrl = trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+# remember THIS: insted of using  y ~ ??????. data=train
+# if you use    x, y, from x group remove the target!!!! 
+nnetFit_glm <- train(training2[-1], training2$lv_bmi,
+                     method = "nnet",
+                     preProcess = c("scale","corr","nzv"), 
+                     tuneGrid=grid, trControl=ctrl,tuneLength = 5,
+                     trace = FALSE, # use true to see convergence
+                     maxit=250,na.action = na.pass,metric="ROC")#maxit mettere 100
+nnetFit_glm
+
+print(nnetFit_glm)
+# # output 
+# Accuracy was used to select the optimal model using the largest value.
+# The final values used for the model were size = 1 and decay = 0.3
+
+# 
+# The final values used for the model were size = 2 and decay = 10.
+
+
+
+
+
+#plot(nnetFit_glm)
+getTrainPerf(nnetFit_glm) 
+#"> getTrainPerf(nnetFit_glm) 
+#TrainROC TrainSens TrainSpec method
+#1        1         1         1   nnet
+
+require(ModelMetrics) #library to calculate performance measures
+
+#overall performance
+#measure logloss (the lower the better)
+y_Pred_nnet <- predict(nnetFit_glm, training2, type = "raw")
+
+confusionMatrix(y_Pred_nnet,train_chgoff$lv_bmi)
+#confusionMatrix(nnetFit_glm)
+
+
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_nnetFit_glm_TETS <- predict(nnetFit_glm, testing2, type = "raw")
+
+confusionMatrix(y_Pred_nnetFit_glm_TETS, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+# # Prevedi le classi e le probabilità
+# predictions <- predict(nnetFit_glm, newdata = test_chgoff, type = "prob")
+# 
+# # Visualizza le distribuzioni delle probabilità predette
+# plotClassProbs(test_chgoff$lv_bmi, predictions)
+# 
+# 
+
+
+
+
+```
+
+
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+```{r}
+
+ggplot(nnetFit_glm)
+set.seed(1234)
+whichTwoPct <- tolerance(nnetFit_glm$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+nnetFit_glm$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+
+# Se ottieni un'accuracy di 1 sia sul set di dati di addestramento che su quello di test quando utilizzi il modello di reti neurali "nnet" tramite la libreria `caret`, potrebbe essere dovuto a vari fattori:
+
+# 1. **Overfitting:** L'overfitting si verifica quando il modello si adatta troppo bene ai dati di addestramento, includendo rumore o pattern casuali. Questo può portare a prestazioni eccellenti sui dati di addestramento ma a prestazioni scadenti su nuovi dati. Assicurati di utilizzare la validazione incrociata o una divisione dei dati di addestramento e di test per valutare le prestazioni del modello.
+ 
+# 2. **Caratteristiche predittive:** Potresti aver incluso caratteristiche altamente predittive che consentono al modello di adattarsi perfettamente ai dati. Questo potrebbe indicare che il modello è troppo semplice per catturare la complessità dei dati.
+
+# 3. **Parametri di tuning non ottimali:** Potrebbe essere necessario esplorare una gamma più ampia di valori dei parametri o utilizzare una tecnica di ottimizzazione diversa per trovare i parametri ottimali per il modello.
+
+# 4. **Errore nei dati:** Potrebbe esserci un errore nei dati che stai utilizzando per addestrare e testare il modello. Assicurati di esaminare attentamente i dati per eventuali anomalie o errori.
+
+# 5. **Set di dati piccolo:** Se il set di dati è molto piccolo, il modello potrebbe essere in grado di adattarsi facilmente anche a rumore casuale nei dati di addestramento.
+
+# Sebbene un'accuracy di 1 su entrambi i set di dati potrebbe indicare prestazioni molto buone del modello, è sempre importante verificare la generalizzazione del modello su dati non visti e considerare se ci sono eventuali problemi che possono influenzare le prestazioni reali del modello.
+
+
+
+
+#v#################################################################################################################
+
+#mod xgboost 
+
+
+XGBoost, acronimo di eXtreme Gradient Boosting, è un potente algoritmo di apprendimento supervisionato utilizzato per problemi di classificazione e regressione. È basato sulla tecnica di boosting degli alberi decisionali e ha dimostrato di ottenere prestazioni eccezionali in una vasta gamma di competizioni di machine learning e applicazioni industriali.
+
+Come funziona:
+XGBoost è una tecnica di ensemble learning che combina i risultati di più modelli più deboli (solitamente alberi decisionali) per ottenere un modello più robusto e predittivo. Funziona iterativamente, costruendo alberi decisionali in sequenza e aggiungendoli alla combinazione esistente di alberi, focalizzandosi sugli errori residui delle previsioni precedenti.
+
+Durante ogni iterazione, XGBoost cerca di addestrare un nuovo albero decisionale per catturare i pattern nei dati che gli alberi precedenti non sono stati in grado di catturare. Successivamente, il modello aggiunge l'albero alla sequenza esistente e aggiorna i pesi degli esempi di addestramento per focalizzarsi sugli errori rimanenti.
+
+
+Quando si usa e perché:
+
+- Alti livelli di accuratezza: XGBoost ha dimostrato di produrre risultati di alta qualità in una vasta gamma di problemi di classificazione e regressione.
+- Robustezza: È resistente al sovradattamento (overfitting) grazie alla tecnica di regolarizzazione incorporata.
+- Flessibilità: È in grado di gestire una varietà di tipi di dati, inclusi dati categorici e mancanti, senza la necessità di preprocessing aggiuntivo.
+- Velocità: Grazie alla sua implementazione efficiente e parallela, XGBoost è in grado di gestire grandi quantità di dati e addestrare modelli rapidamente.
+- XGBoost è particolarmente utile quando si affrontano dataset complessi con molte features e quando si desidera ottenere prestazioni elevate senza molta sintonizzazione manuale.
+
+
+Preprocessing:
+
+- Trattamento dei dati mancanti: Gestire i valori mancanti nel dataset, ad esempio imputando valori mancanti o eliminando le osservazioni con valori mancanti.
+- Codifica delle variabili categoriche: Convertire le variabili categoriche in una forma che possa essere utilizzata dall'algoritmo, ad esempio tramite la codifica one-hot.
+- Standardizzazione delle variabili: Anche se XGBoost non richiede esplicitamente la standardizzazione delle features, in alcuni casi può essere utile per garantire che le features abbiano la stessa scala.
+
+
+
+Parametri di tuning:
+
+- learning_rate: La velocità di apprendimento del modello.
+- max_depth: La massima profondità degli alberi decisionali.
+- min_child_weight: Il peso minimo richiesto per creare un nuovo nodo nell'albero.
+- gamma: Un parametro di regolarizzazione che controlla la complessità dell'albero.
+- subsample: La frazione di osservazioni utilizzate per addestrare ciascun albero.
+- colsample_bytree: La frazione di features utilizzate per addestrare ciascun albero.
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# Carica le librerie necessarie
+library(caret)
+library(xgboost)
+
+# Carica il dataset di esempio (ad esempio iris dataset)
+# data(iris)
+set.seed(1234)
+# Definisci la griglia dei parametri per il tuning
+tuneGrid <- expand.grid(
+  nrounds = c(50, 100, 150),  # Numero di iterazioni (alberi) per l'addestramento
+  max_depth = c( 6),      # Profondità massima dell'albero3,, 9
+  eta = c( 0.1),     # Tasso di apprendimento,0.01,, 0.3
+  gamma = c(0),       # Parametro di regolarizzazione, , 0.1, 0.2
+  colsample_bytree=1,
+  min_child_weight=1,subsample=1
+)
+
+# Definisci il controllo per il modello
+
+ 
+ctrl = trainControl(method= "cv",number=10, search="grid", classProbs=TRUE,savePredictions = "final",
+                     summaryFunction = twoClassSummary)
+
+# Addestra il modello utilizzando la libreria caret
+xgb_model <- train(#trainig[,-1],trainig[,1]
+  lv_bmi ~ .,                 # Formula di addestramento
+  data = training2,                 # Dataset
+  method = "xgbTree",          # Metodo: XGBoost
+  trControl = ctrl,         # Controllo
+  tuneGrid = tuneGrid,trace=F          # Griglia dei parametri da cercare
+)
+
+# Mostra i risultati
+print(xgb_model)
+
+
+y_Pred_xgboost <- predict(xgb_model, training2, type = "raw")
+
+confusionMatrix(y_Pred_xgboost,train_chgoff$lv_bmi)
+#confusionMatrix(nnetFit_glm)
+
+
+
+
+
+#PERFORMANCE SU TEST
+y_Pred_xgboost_test <- predict(xgb_model, testing2, type = "raw")
+
+confusionMatrix(y_Pred_xgboost_test, test_chgoff$lv_bmi)#accuracy bassa 0.80 e kappa molto basso 0.193
+
+
+# 
+# mae=caret::MAE(test_chgoff$lv_bmi,y_Pred_xgboost_test);mae
+# 
+# rmse=caret::RMSE(test_chgoff$lv_bmi,y_Pred_xgboost_test);rmse
+
+```
+
+
+#scelta modello finale con parametri  e studio dei  valori metriche 
+#in base alle variazioni  dei parametri di tunining
+visualizza i migliori risultati delle metriche dicendoci con quali settaggi degli iperparametri ha ottenuto quesi risultati
+
+```{r}
+
+# addmargins(prop.table(as.factor(y_Pred_xgboost_test), test_chgoff$lv_bmi))
+
+
+ggplot(xgb_model)
+set.seed(1234)
+whichTwoPct <- tolerance(xgb_model$results, metric = "ROC", 
+                         tol = 2, maximize = TRUE)  
+cat("best model within 2 pct of best:\n")
+## best model within 2 pct of best:
+xgb_model$results[whichTwoPct,1:5]
+# best model within 2 pct of best:
+#   ncomp  Accuracy     Kappa AccuracySD    KappaSD
+# 1     1 0.3521271 0.1373162 0.04827048 0.06243349
+
+
+```
+
+
+
+
+#v#################################################################################################################
+# visualizzazione risultati di sensitività e specificità dei modelli suil train 
+
+con la libreria *caretEnsemble* possiamo assemblare in un oggetto i modelli che abbiamo addestrato sui dt di training e vedere complessivamente i risultati di:ROC ,SENSITIVITY E SPECIFICITY.
+osservare se ci sono differenze significative
+
+
+```{r}
+library(caret)
+library(caretEnsemble)
+results <- resamples(list( plsPP=pls, rfTune=rfTune1,glmPP=glmPP, rpartTuneCvA=rpartTuneCvA,xgboost=xgb_model,gradientBoost=gbmFit4,nnet=nnetFit_glm,qda=qda,knn=knn,naivebayes=naivebayes,lda=lda,ridge=ridge,lasso=lasso,svm=svmrad))#,nnet=nnetFit_glm,qda=qda
+?resamples
+#knn=knn,naivebayes=naivebayes
+bwplot(results,scales = list(relation = "free"))#,xlim = list(c(.9,1), c(0,3)))
+
+# splom(results)
+
+
+Diffs <- diff(results)
+summary(Diffs)
+```
+
+
+
+Da una prima  analisi dei risultati dei modelli, quelli che performano meglio su tutte e tre le metriche mostrate sono i modelli basati sulle reti neurali e sugli alberi (random forest, gradient boosting xgboost, albero “classico”), invece i restanti , come ad esempio il pls, non ottengono performance buone in tutte le metriche.
+Da notare che tutti i modelli (tranne il naive bayes) ottengono valori di sensibilità superiori a 0.75, cioè individuano bene la quota di soggetti obesi che sono effettivamente obesi, i cosiddetti veri positivi; mentre ottengono valori più contenuti di specificità cioè la quota di soggetti non obesi che sono effettivamente non obesi (veri negativi), solo i modelli basati sugli alberi e le reti neurali ottengono valori di specificità superiori a 0.80.
+Per valutare se ci sono differenze significative tra i modelli, è stata applicato la statistica t-test (corretta con metodo Bonferroni), da cui  risulta che:
+
+per quanto riguarda la  sensitività:  non ci sono differenze significative tra i diversi modelli;
+il modello logistico, PLS, Lasso, Ridge, LDA e QDA hanno la specificità significativamente più bassa rispetto ai modelli Random Forest, Gradient Boosting, XGBoost, Reti Neurali e Knn.
+
+
+
+
+
+
+
+
+
+# validazione dei risultati sul dt test con curve roc 
+
+
+
+adesso con i modelli che hanno dato i risultati migliori delle metriche su training,vediamo a lor volta come si comportano sul dt di test  
+
+
+
+
+#PROB PER X1 OBESI 
+
+prediciamo con *predict* la probailità d'interesse(X1:obesi) sul dt test 
+
+```{r}
+test_chgoff$glm_C = predict(glmPP       , test_chgoff, "prob")[,2]#con type="prob" mi calcola le probabilità 
+# 
+# ZIO<-predict(glmPP       , test_chgoff, "prob")[,1]
+# 
+# CANE<-predict(glmPP       , test_chgoff, "prob")[,2]#PROB PER X1
+# head(ZIO)
+# head(CANE)
+  # test_chgoff<-test_chgoff[,-c(31,32)]
+test_chgoff$xgb_C = predict(xgb_model         , test_chgoff, type="prob")[,2]
+
+test_chgoff$pls_C = predict(pls         , test_chgoff, type="prob")[,2]
+test_chgoff$lasso_C = predict(lasso    , test_chgoff, "prob")[,2]
+test_chgoff$ridge_C = predict(ridge    , test_chgoff, "prob")[,2]
+test_chgoff$LDA_C = predict(lda    , test_chgoff, "prob")[,2]
+ test_chgoff$QDA_C = predict(qda    , test_chgoff, "prob")[,2]
+test_chgoff$svm_C = predict(svmrad    , test_chgoff, "prob")[,2]
+test_chgoff$gb_C = predict(  gbmFit4    , test_chgoff, "prob")[,2]
+test_chgoff$rpart_C = predict(rpartTuneCvA, test_chgoff, "prob")[,2]
+ test_chgoff$nnet_C = predict(nnetFit_glm, test_chgoff, "prob")[,2]
+test_chgoff$rf_C = predict(rfTune1      , test_chgoff, "prob")[,2]
+test_chgoff$knn_C = predict(knn      , test_chgoff, "prob")[,2]
+test_chgoff$nb_C = predict(    naivebayes  , test_chgoff, "prob")[,2]
+
+```
+
+
+
+
+
+
+
+#costruzionin delle roc dei modelli su test 
+
+con il comando *roc*cdella libreria *pROC* costruiamo i valori di  roc 
+
+```{r}
+library(pROC)
+# roc values
+ roc.glm=roc(lv_bmi ~ glm_C, levels=c("X1", "X0"), data = test_chgoff)
+ roc.xgb=roc(lv_bmi ~ xgb_C, levels=c("X1", "X0"), data = test_chgoff)
+
+ roc.pls=roc(lv_bmi ~ pls_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.lasso=roc(lv_bmi ~ lasso_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.RIDGE=roc(lv_bmi ~ ridge_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.lDA=roc(lv_bmi ~ LDA_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.qDA=roc(lv_bmi ~ QDA_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.SVM=roc(lv_bmi ~ svm_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.gb=roc(lv_bmi ~ gb_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.rpart=roc(lv_bmi ~ rpart_C,levels=c("X1", "X0"), data = test_chgoff)
+ roc.nnet=roc(lv_bmi ~ nnet_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.rf=roc(lv_bmi ~ rf_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.knn=roc(lv_bmi ~ knn_C,levels=c("X1", "X0"), data = test_chgoff)
+roc.naivebayes=roc(lv_bmi ~ nb_C,levels=c("X1", "X0"), data = test_chgoff)
+```
+
+
+#grafici delle roc 
+Le curve ROC (Receiver Operating Characteristic) sono un grafico utilizzato per valutare le prestazioni di un modello di classificazione binaria in base alla sua sensibilità e specificità. Sono ampiamente utilizzate in campo medico, diagnostico, biologico e in altri settori in cui è importante valutare le prestazioni di un classificatore binario.
+
+Come funzionano:
+Una curva ROC è una rappresentazione grafica della relazione tra la sensibilità (vero positivo rate) e la specificità (vero negativo rate) di un classificatore binario al variare della soglia di decisione. La sensibilità misura la capacità del modello di identificare correttamente gli esempi positivi, mentre la specificità misura la capacità del modello di identificare correttamente gli esempi negativi.
+
+La curva ROC viene costruita tracciando la sensibilità sul asse y e la complementare della specificità (1 - specificità) sull'asse x per diverse soglie di decisione. In pratica, una soglia di decisione è un valore di probabilità sopra il quale un esempio viene classificato come positivo, mentre al di sotto viene classificato come negativo.
+
+Interpretazione:
+Una curva ROC ideale si avvicina al vertice in alto a sinistra del grafico, il che indica che il modello ha una sensibilità elevata (vero positivo rate) e una bassa tasso di falsi positivi (1 - specificità) su tutte le soglie di decisione. Una linea diagonale rappresenta il caso di una classificazione casuale.
+
+Utilità:
+Le curve ROC forniscono una visione completa delle prestazioni del modello di classificazione binaria, consentendo di valutare e confrontare modelli in modo rapido ed efficace. Inoltre, l'area sotto la curva ROC (AUC-ROC) fornisce una misura quantitativa delle prestazioni del modello, dove un'area maggiore indica prestazioni migliori.
+
+Applicazioni:
+Le curve ROC sono utilizzate in una vasta gamma di applicazioni, tra cui:
+
+Valutazione delle prestazioni dei test diagnostici in campo medico.
+Valutazione delle prestazioni dei modelli di classificazione binaria in machine learning.
+Selezione delle migliori features per la classificazione.
+In sintesi, le curve ROC forniscono uno strumento prezioso per valutare e confrontare le prestazioni dei modelli di classificazione binaria in una varietà di contesti.
+
+
+disegniamo in un grafico tutte le roc dei modelli  
+
+```{r}
+plot(roc.glm,col="grey")#NERA  LOGISTICO                   NO6
+plot(roc.pls,add=T,col="red")#PLS               NO 7 
+plot(roc.lasso,add=T,col="blue")#LASSO           5
+plot(roc.RIDGE,add=T,col="aquamarine")#ridgw           5
+plot(roc.lDA,add=T,col="springgreen3")#lda           5
+plot(roc.qDA,add=T,col="steelblue2")#qda           5
+plot(roc.xgb,add=T,col="gold4")#svm           5
+
+plot(roc.SVM,add=T,col="deeppink2")#svm           5
+plot(roc.gb,add=T,col="yellow")#GRADIENT BOOST 2(PUO ESSERE ANCHE TERZO )
+plot(roc.rpart,add=T,col="violet")#RPART          4
+plot(roc.nnet,add=T,col="green")#RETI NEURALI     1
+plot(roc.rf,add=T,col="orange")#RANDOM FOREST 3(PUO ESSERE ANCHE SECONDO )
+plot(roc.knn,add=T,col="brown")
+plot(roc.naivebayes,add=T,col="pink")
+
+legend(0,0.78,
+       c("glm","pls","lasso","ridge","xgb","lda","qda", "svm","gb","rpart","nnet","rf","knn","nb"),
+       pch=16,bty = "n",
+       col = c("grey","red","blue","aquamarine","gold4","springgreen3","steelblue2","deeppink2","yellow","violet","green","orange","brown","pink"))#rainbow(7) mi mette i colori in modo autoatico ->colori arcobaleno 
+         
+```
+
+
+#grafici delle roc dei modelli più performanti 
+disegniamo in un grafico  le roc dei modelli  più performanti 
+
+
+```{r}
+plot(roc.gb,col="yellow")#GRADIENT BOOST 2(PUO ESSERE ANCHE TERZO )
+ plot(roc.nnet,add=T,col="green")#RETI NEURALI     1
+plot(roc.rf,add=T,col="orange")#RANDOM FOREST 3(PUO ESSERE ANCHE SECONDO )
+plot(roc.rpart,add=T,col="violet")#RPART          4
+plot(roc.knn,add=T,col="brown")
+plot(roc.xgb,add=T,col="gold4")#qda           5
+
+
+legend(0,0.78,
+c("gb","nnet","rf","rpart","knn","xgb"),pch = 16,bty = "n",
+col = c("yellow","green","orange","violet","brown","gold4"),title = "modelli : " )#rainbow(7) mi mette i colori in modo autoatico ->colori arcobaleno 
+#"red","blue","aquamarine","chartreuse1","deeppink2","yellow","violet","orange","brown","pink"
+
+
+
+```
+
+TRA I MODELLI PIù PERFORMANTI SUL DT DI TRAINING ,I RISULTati sul dt di test mostrano che:
+- la rete neurale ha un valore di AUC pari a 1 (potrebbe essere che ci sia overfitting )
+- i modelli basati sugli alberi mosrano delle buone capacità,in ordine descrescente del valore AUC si ha: xgboost,random forest,gradient boosting e alberi 
+-infine per ultima con un discreto valore di AUC si ha un buon adattamento del modello knn 
+
+
+
+
+
+#studio overfitting ,confronto auc tra modelli di addestrati su train vs addestrati su test 
+
+per vedere se ce oevrfitting dei modelli controlliamo usando una metrica specifica(valore ROC e AUC ),se il valore di questa metrica è tanto distante quando si fa sul dt di training rispeto al dt ,cioè indica overfitting ,viceversa indica buona generalizzazione del modello . 
+
+```{r}
+rf2 = predict(rfTune1, train_chgoff, "prob")[,2]
+ test_chgoff$rf = predict(rfTune1, test_chgoff, "prob")[,2]
+roc.rf2=roc(lv_bmi ~ rf2, data = train_chgoff)
+roc.rf=roc(lv_bmi ~ rf, data = test_chgoff)
+plot(roc.rf2)
+plot(roc.rf,add=T,col="violet")
+roc.rf2 #auc 1 
+roc.rf#auc 0.946Z
+legend(0,0.78,
+c("roc su train","roc su test"),pch = 16,bty = "n",
+col = c("black","violet"),title = "modelli : " )
+
+
+#gb 
+gb2 = predict(gbmFit4, train_chgoff, "prob")[,2]
+test_chgoff$gb = predict(gbmFit4, test_chgoff, "prob")[,2]
+roc.gb2=roc(lv_bmi ~ gb2, data = train_chgoff)
+roc.gb=roc(lv_bmi ~ gb, data = test_chgoff)
+plot(roc.gb2)
+plot(roc.gb,add=T,col="violet")
+roc.gb2
+roc.gb
+legend(0,0.78,
+c("roc su train","roc su test"),pch = 16,bty = "n",
+col = c("black","violet"),title = "modelli : " )
+
+# 
+# #nnet 
+# nnet2 = predict(nnetFit_glm, train_chgoff, "prob")[,2]
+# test_chgoff$nnet = predict(nnetFit_glm, test_chgoff, "prob")[,2]
+# roc.nnet2=roc(lv_bmi ~ nnet2, data = train_chgoff)
+# roc.nnet=roc(lv_bmi ~ nnet, data = test_chgoff)
+# plot(roc.gb2)
+# plot(roc.gb,add=T,col="violet")
+# roc.gb2
+# roc.gb
+
+xgb2 = predict(xgb_model, train_chgoff, "prob")[,2]
+test_chgoff$xgb = predict(xgb_model, test_chgoff, "prob")[,2]
+roc.xgb2=roc(lv_bmi ~ xgb2, data = train_chgoff)
+roc.xgb=roc(lv_bmi ~ xgb, data = test_chgoff)
+plot(roc.xgb2)
+plot(roc.xgb,add=T,col="violet")
+roc.xgb2
+roc.xgb
+legend(0,0.78,
+c("roc su train","roc su test"),pch = 16,bty = "n",
+col = c("black","violet"),title = "modelli : " )
+
+
+
+
+```
+
+DALLE CURVE ROC PRIMA SU TRIANING E POI SU TEST DEI TRE MODELLI SI EVINCE ,CHE IL MIGLIORE DAL PUNTO DI VISTA DELL'OVERFITTING è IL GRADIENT BOOSTING IN QUANTO LE DUE CURVE SONO MOLTO PIù VICINE DELLE ALTRE CURVE DEGLI ALTRI DUE MODELLI . 
+
+
+#lift  :ulteriore metrica per valutare in base all percentuale % di popolazione che si analizz, quanto il modello  catturi la popolazione d'interesse(X1:obesi)
+
+un'altra metrica che si può usare sono le curve lift.
+queste curve ci danno l'informazione che a una data percentuale di popolazione il modello addestrato specifico ,riesce a catturare il x% dei soggetti della categoria d'interesse.
+con il comando *gain_lift* della libreria *funModeling* ci permette di construire queste curve.
+
+
+
+
+```{r}
+
+library(funModeling)
+gain_lift(data = test_chgoff, score = 'gb_C', target = 'lv_bmi',q_segments=20)
+
+
+
+library(funModeling)
+gain_lift(data = test_chgoff, score = 'xgb_C', target = 'lv_bmi',q_segments=20)
+
+
+library(funModeling)
+gain_lift(data = test_chgoff, score = 'rf_C', target = 'lv_bmi',q_segments=20)
+```
+
+
+tutti e tre i modelli al 20% della popolazione riescono già a catturare una percentuale di almeno 40% della categoria d'interesse(obesi)
+
+
+
+
+
+#ricerca soglia ottimale (si puo solo fare con target binaria )
+
+studiamo tramite il modello GRADIENT BOOSTING come si comportano le metriche in base alle possibili soglie che possno essere applicate.
+OBIETTIVO:
+- Sensibilità,importante quando è cruciale non perdere nessun caso positivo, come nel caso di malattie gravi dove una diagnosi precoce può fare la differenza nel trattamento e nella prognosi.
+
+- Specificità,è importante in situazioni in cui è essenziale evitare diagnosi errate che potrebbero portare a trattamenti o procedure non necessari e potenzialmente dannosi.
+
+ a seconda della malattia e del contesto clinico, potrebbero essere importanti anche altre metriche come il valore predittivo positivo, il valore predittivo negativo e l'accuratezza complessiva del modello. , potrebbe essere cruciale minimizzare il numero di falsi positivi o falsi negativi, e quindi massimizzare il valore predittivo positivo o negativo, mentre in altri casi, la precisione generale del modello potrebbe essere più importante.
+ 
+ 
+ 
+ 
+ l'obesità è associata a una serie di problemi  di salute :  malattie cardiache,ictus e altro.
+ riconoscerla fin da subito può ridurre il rischio di insorgenza di ulteriori patologie e migliora la vita.
+ per i professioninsti sanitari identificare l'obesità permette di implementare strategie preventive per gestire la paologia stessa e prevenire sviluppo di complicazioni mediche associate.
+prevenire obesità coin strategie che siano n accordo con lo stile di vita del paziente.
+ L'obesità è anche associata a costi sanitari significativi, sia per il paziente che per il sistema sanitario nel suo complesso
+ 
+ 
+ 
+La scelta delle metriche dipende dalle specifiche esigenze del problema e dalla sua natura. Ad esempio, in contesti in cui è più importante evitare diagnosi errate di obesità (ridurre i falsi positivi), la precisione e la specificità possono essere metriche cruciali. Tuttavia, in situazioni in cui è fondamentale identificare tutti i casi di obesità (ridurre i falsi negativi), la sensibilità può essere la metrica principale. In genere, è importante considerare più metriche insieme per valutare compiutamente le prestazioni del modello.
+
+
+
+
+Il trade-off tra sensitivity e specificity si verifica perché  non è possibile massimizzare entrambe le metriche contemporaneamente.
+Aumentare la sensitivity del modello (ad esempio, riducendo la soglia di decisione) può portare a un aumento del numero di falsi positivi, diminuendo così la specificity, e viceversa.
+
+Ad esempio, considera un modello di screening per una malattia rara. Se si desidera massimizzare la sensitivity del modello, si potrebbe impostare una soglia di decisione molto bassa in modo che il modello identifichi la maggior parte dei veri positivi, anche a costo di identificare un gran numero di falsi positivi (riducendo la specificity). Questo potrebbe essere accettabile se il costo di non identificare un caso positivo è molto alto e il costo dei falsi positivi è relativamente basso.
+
+D'altra parte, se il costo dei falsi positivi è molto alto (ad esempio, il trattamento erroneo di pazienti sani), si potrebbe voler aumentare la specificity del modello, accettando una minore sensitivity. Ciò potrebbe comportare una soglia di decisione più alta, che riduce il numero di falsi positivi ma potrebbe aumentare i falsi negativi.
+
+In sintesi, il trade-off tra sensitivity e specificity dipende dal contesto specifico del problema e dalle relative conseguenze dei falsi positivi e dei falsi negativi. È importante bilanciare queste metriche in base alle esigenze dell'applicazione e ai vincoli del problema.
+
+
+
+```{r}
+#test_chgoff$
+gb_C_X1 = predict(  gbmFit4    , test_chgoff, "prob")[,2]
+# test_chgoff$rpart_C = predict(rpartTuneCvA, test_chgoff, "prob")
+#test_chgoff$nnet_C = predict(nnetFit_glm, test_chgoff, "prob")
+rf_C_X1 = predict(rfTune1      , test_chgoff, "prob")[,2]
+#test_chgoff$
+# NNET_C_X1 = predict(nnetFit_glm      , test_chgoff, "prob")[,2]
+xgb_C_X1 = predict(xgb_model      , test_chgoff, "prob")[,2]
+
+```
+
+
+```{r}
+
+
+y=test_chgoff$lv_bmi
+y=ifelse(y=="X1",1,0)
+#predprobC0=test_chgoff$nnet_C
+# predprobC0=test_chgoff$rf_C
+# predprobC0=test_chgoff$gb_C
+
+library(ROCR)
+# predRocc0 <- prediction(predprobC0,y)
+
+predRrf_C_X1 <- prediction(gb_C_X1,y)
+
+# predRrf_C_X1 <- prediction(rf_C_X1,y)
+
+
+# predRrf_C_X1 <- prediction(xgb_C_X1,y)
+
+
+```
+
+
+
+
+#CON gb
+disegniamo i grafici delle metriche: accuracy ,sensitivity,specificity,error rate,recall e precision 
+
+```{r}
+spec.perf = performance(  predRrf_C_X1 , measure = "spec")
+plot(spec.perf)
+
+sens.perf = performance( predRrf_C_X1  , measure = "sens")
+plot(sens.perf)
+abline(h=0.839,col="red",lty=2)
+# abline(v=0.25,col="green",lty=2)
+# 
+# abline(v=0.3,col="green",lty=2)
+
+abline(v=0.375,col="red",lty=2)
+
+
+# abline(v=0.4,col="green",lty=2)
+#BRUTTO ,DIFFICILE A INTERPRETARE
+
+
+#errorate
+err.perf = performance(predRrf_C_X1, measure = "err")
+plot(err.perf)
+
+#recall
+rec.perf = performance(predRrf_C_X1, measure = "rec")
+plot(rec.perf)
+
+
+
+#precision
+prec.perf = performance(predRrf_C_X1, measure = "prec")
+plot(prec.perf)
+#BRUTTO ,DIFFICILE A INTERPRETARE
+
+acc.perf = performance(predRrf_C_X1, measure = "acc")
+plot(acc.perf)
+abline(h=0.80,col="red",lty=2)
+# abline(v=0.25,col="green",lty=2)
+#
+# abline(v=0.3,col="green",lty=2)
+
+abline(v=0.375,col="red",lty=2)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#oggetti per creare grafico thresold 
+elementi per il grafico della thresold 
+
+```{r}
+cut=as.data.frame(acc.perf@x.values)
+colnames(cut)="cut"
+head(cut)
+
+acc=as.data.frame(acc.perf@y.values)
+colnames(acc)="acc"
+
+spec=as.data.frame(spec.perf@y.values)
+colnames(spec)="spec"
+
+sens=as.data.frame(sens.perf@y.values)
+colnames(sens)="sens"
+
+err=as.data.frame(err.perf@y.values)
+colnames(err)="err"
+
+# rec=as.data.frame(rec.perf@y.values)
+# colnames(rec)="rec"
+
+prec=as.data.frame(prec.perf@y.values)
+colnames(prec)="prec"
+
+#'CDICE CHE MI PERMETTE DI PLOTTARE TUTTE LE METRICHE DEL MODELLO VINCENTE 
+all=cbind(cut, spec, sens, acc,prec,err)#,rec
+
+head(all)
+dim(all)
+```
+
+
+
+#GRAFICO THRESOLD (solgia )
+
+con sempre la libreria ggplot studiamo la soglia come fa variare i risultati delle metriche 
+
+```{r}
+library(reshape2)
+metrics <- melt(all, id.vars = "cut", 
+                variable.name = "Measure_type",
+                value.name = "Measure")
+head(metrics)
+dim(metrics)
+# plot to a better diagnostic choice of suitable threshold##########
+ggplot(metrics, aes(x = cut, y = Measure, color = Measure_type)) + 
+  geom_line(size=1) + 
+  ylab("") + xlab("Probability Cutoff") +
+  theme(legend.position = "top")
+```
+
+
+ad esempio se prendiamo una soglia di 0.375 per identificare gli obesi(X1) come >0.375 e i non obesi (X0) <0.375,
+ci aspettimao di ottenere una sensitivity intorno al 85% e una specificity intorno al 75%.
+
+#SPERIMENTARE LA SOGLIA SCELTA (DECISION RULE )PER TESTARE LE PRESTAZIONI (vedere ancora su dt test_chgoff)
+
+#decision rule  con mod GB >0.375 X1 su dt test 
+
+dopodichè con una porzione del dt di test valutiamo se questa soglia ci resituisca dei valori ottimali di sensiticvity e specificity  
+
+
+```{r}
+# use decision rule for the best model#####
+# example 
+# test$pred_y=ifelse(probM>0.65, "M","R")
+library(caret)
+set.seed(1234)
+test_chgoff$pred_y_RF=ifelse(test_chgoff$rf_C>0.375, "X1","X0")#rf criterio stat
+test_chgoff$pred_y_GB=ifelse(test_chgoff$gb_C>0.375, "X1","X0")#gb criterio stat
+test_chgoff$pred_y_xGB=ifelse(test_chgoff$xgb_C>0.375, "X1","X0")#gb criterio stat
+
+prop.table(table(test_chgoff$pred_y_RF))
+prop.table(table(test_chgoff$pred_y_GB))
+prop.table(table(test_chgoff$pred_y_xGB))
+
+
+confusionMatrix(as.factor(test_chgoff$pred_y_RF),test_chgoff$lv_bmi)
+confusionMatrix(as.factor(test_chgoff$pred_y_GB),test_chgoff$lv_bmi)
+
+confusionMatrix(as.factor(test_chgoff$pred_y_xGB),test_chgoff$lv_bmi)
+
+
+
+#DOPO AVER DECISO SOGLIA CON DECISION RULE HO VISUALIZZATO LE NUOBE PROBABILITà CLASSIDCATE NELLE DUE 
+#Ctegorie e le ho confrontate con la target dello stesso dt ,come ulteriore prova 
+addmargins(table(test_chgoff$pred_y_RF,test_chgoff$lv_bmi))
+addmargins(table(test_chgoff$pred_y_GB,test_chgoff$lv_bmi))
+addmargins(table(test_chgoff$pred_y_xGB,test_chgoff$lv_bmi))
+
+
+
+# Carichiamo il pacchetto ggplot2
+library(ggplot2)
+
+# Creiamo una tabella di contingenza di esempio
+tab_contingenza <- table(test_chgoff$lv_bmi,test_chgoff$pred_y_GB)
+
+# Trasformiamo la tabella di contingenza in un dataframe
+df_contingenza <- as.data.frame.table(tab_contingenza)
+
+# Rinominiamo le colonne per chiarezza
+names(df_contingenza) <- c("lv_bmi", "pred_y_GB", "Freq")
+
+# Creiamo il grafico utilizzando ggplot2
+grafico3 <-ggplot(df_contingenza, aes(x = lv_bmi, y = pred_y_GB, fill = Freq, label = Freq)) +
+  geom_tile() +  geom_text(size = 5, color = "black") +
+  labs(title = "Confusion Matrix") +
+  scale_fill_gradient(low = "turquoise3", high = "orange2") +
+  theme_minimal() 
+
+ff<-grafico3+
+  annotate("text", x = 2, y = 2.56, label = paste("Sensitività:", 0.84), color = "black", size = 5) +
+  annotate("text", x = 1, y = 2.56, label = paste("Specificità:", 0.74), color = "black", size = 5)
+print(ff)
+
+
+
+
+```
+
+
+
+
+
+come si può vedere la matrice di confusione ,sviluppata con la nuova soglia ,ci dà dei risultati buoni/soddisfacienti .
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#selezionando in modo randomico le osservazioni del dt test e vedere come si comporta modello-->newdata33
+#decision rule  con mod GB >0.375 X1 su dt newdata33 
+
+```{r}
+# #modello con rf 
+
+set.seed(3421)
+# righe_casuali <- dati[sample(nrow(dati), 5), ]
+# newdata33=test_chgoff[sample(nrow(test_chgoff),100),-c(16:29,31,32,34,35)]#rf
+newdata33=test_chgoff[sample(nrow(test_chgoff),100),-c(16:30,32,33,35)]#gb
+
+# newdata33$prob33 = predict(rfTune1, newdata33, "prob")#VIENE
+# newdata33$prob33 = predict(xgb_model, newdata33, "prob")#VIENE
+newdata33$prob33 = predict(gbmFit4, newdata33, "prob")#VIENE
+
+
+head(newdata33$prob33)#VIENE
+probx133=newdata33$prob33[,2]#VIENE
+newdata33$pred_y_33=ifelse(probx133>0.375, "X1","X0")#VIENE
+head(newdata33)#VIENE
+prop.table(table(newdata33$pred_y_33))#VIENE
+y_Pred_newdata33 <- predict(rfTune1, newdata33, type = "raw")#VIENE
+confusionMatrix(y_Pred_newdata33, as.factor(newdata33$pred_y_33))#VIEN E , positive="X1"
+ 
+
+addmargins(table(newdata33$lv_bmi,newdata33$pred_y_33))
+
+
+
+# Carichiamo il pacchetto ggplot2
+library(ggplot2)
+
+# Creiamo una tabella di contingenza di esempio
+tab_contingenza <- table(newdata33$lv_bmi,newdata33$pred_y_33)
+
+# Trasformiamo la tabella di contingenza in un dataframe
+df_contingenza <- as.data.frame.table(tab_contingenza)
+
+# Rinominiamo le colonne per chiarezza
+names(df_contingenza) <- c("lv_bmi", "pred_y_33", "Freq")
+
+# Creiamo il grafico utilizzando ggplot2
+grafico<-ggplot(df_contingenza, aes(x = lv_bmi, y = pred_y_33, fill = Freq, label = Freq)) +
+  geom_tile() + 
+  geom_text(size = 5, color = "black") +
+  labs(title = "Confusion Matrix") +
+  scale_fill_gradient(low = "turquoise3", high = "orange2") +
+  theme_minimal()
+
+grafico_con_metriche <- grafico +
+  annotate("text", x = 2, y = 2.56, label = paste("Sensitivity:", 0.86), color = "black", size = 5) +
+  annotate("text", x = 1, y = 2.56, label = paste("Specificity:", 0.73), color = "black", size = 5)
+print(grafico_con_metriche)
+
+
+
+```
+
+
+
+
+
+
+
+#RIMOZIONI OGGETTI NELLA MEMEORIA DI RSTUDIO 
+
+```{r}
+rm(list=ls()) 
+```
+
+
+
+
+
+
+
+
